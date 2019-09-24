@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <getopt.h>
 #include <errno.h>
 #include <limits.h>
 #include <dirent.h>
@@ -34,44 +33,18 @@ int get_mail_count(char *path);
 
 int main(int argc, char *argv[])
 {
-    int c = 0;
-    int option_p_counter = 0;
-    int option_d_counter = 0;
-    int port = 0;
-    char *dir_path = NULL;
-
-    while((c = getopt(argc, argv, "p:d:")) != EOF)
-    {
-        switch(c)
-        {
-            case 'p':
-                if(option_p_counter)
-                {
-                    print_usage();
-                }
-                port = (int) strtol(optarg, NULL, 10);
-                option_p_counter = 1;
-                break;
-            case 'd':
-                if(option_d_counter)
-                {
-                    print_usage();
-                }
-                dir_path = optarg;
-                if(mkdir(dir_path, 0777) && errno != EEXIST)
-                {
-                    perror("Error while creating a directory");
-                    exit(EXIT_FAILURE);
-                }
-                option_d_counter = 1;
-                break;
-            default:
-                print_usage();
-        }
-    }
-    if(argc < 3 || argc > 5 || option_d_counter != 1 || option_p_counter != 1)
+    if(argc != 3)
     {
         print_usage();
+    }
+
+    int port = (int) strtol(argv[1], NULL, 10);
+    char dir_path[PATH_MAX];
+    strcpy(dir_path, argv[2]);
+    if(mkdir(dir_path, 0777) && errno != EEXIST)
+    {
+        perror("error: ");
+        exit(EXIT_FAILURE);
     }
 
     int create_socket;
@@ -475,7 +448,7 @@ int get_mail_count(char *path)
 
 void print_usage()
 {
-    printf("Usage: server -p PORT -d DIRECTORY\n");
+    printf("Usage: server PORT DIRECTORY\n");
     exit(EXIT_FAILURE);
 }
 

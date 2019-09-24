@@ -7,4 +7,4 @@ client:
 	gcc -Wall -o client client.c
 
 clean:
-	rm -f server
+	rm -f server client

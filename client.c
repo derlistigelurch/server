@@ -90,5 +90,5 @@ int main(int argc, char *argv[])
 
 void print_usage()
 {
-    printf("Usage: client -s SERVERADDRESS -p PORT\n");
+    printf("Usage: client SERVERADDRESS PORT\n");
 }

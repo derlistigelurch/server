@@ -10,6 +10,7 @@
 #include <limits.h>
 #include <dirent.h>
 #include <signal.h>
+#include <time.h>
 
 #define BUF 1024
 
@@ -51,6 +52,7 @@ int main(int argc, char *argv[])
         print_usage();
     }
 
+    time_t current_time;
     int new_socket;
     int port = (int) strtol(argv[1], NULL, 10);
     char dir_path[PATH_MAX];
@@ -128,12 +130,13 @@ int main(int argc, char *argv[])
                     strcat(temp_path, message.recipient);
                     if(mkdir(temp_path, 0777) && errno != EEXIST)
                     {
-                        perror("Error while creating a directory");
+                        perror("error");
                         exit(EXIT_FAILURE);
                     }
                     strcat(temp_path, "/");
-                    strcat(temp_path, message.sender);
-
+                    current_time = time(NULL);
+                    snprintf(buffer, BUF, "%s_%ld", message.sender, current_time);
+                    strncat(temp_path, buffer, strlen(buffer));
                     FILE *file;
                     if((file = fopen(temp_path, "w")) == NULL)
                     {
@@ -143,30 +146,26 @@ int main(int argc, char *argv[])
                             exit(EXIT_FAILURE);
                         }
                     }
-                    fprintf(file, "%s\n", message.sender);
-                    fprintf(file, "%s\n", message.recipient);
-                    fprintf(file, "%s", message.subject);
-                    char temp;
-                    char eof_string[3];
-                    do
+                    else
                     {
-                        temp = buffer[size - 1];
-                        size = readline(new_socket, buffer, BUF);
-                        if(check_receive(size))
+                        fprintf(file, "%s\n", message.sender);
+                        fprintf(file, "%s\n", message.recipient);
+                        fprintf(file, "%s", message.subject);
+                        do
                         {
-                            break;
+                            size = readline(new_socket, buffer, BUF);
+                            if(check_receive(size))
+                            {
+                                break;
+                            }
+                            fprintf(file, "%s", buffer);
+                        } while(!((buffer[0] == '.' && (buffer[1] == '\n' || buffer[1] == '\r'))));
+                        fclose(file);
+                        if(writen(new_socket, "OK\n\0", 4) < 0)
+                        {
+                            perror("send error");
+                            exit(EXIT_FAILURE);
                         }
-                        fprintf(file, "%s", buffer);
-                        strncpy(eof_string, &temp, 1);
-                        eof_string[1] = buffer[0];
-                        eof_string[2] = buffer[1];
-                    }
-                    while(strstr(eof_string, "\n.\n") == NULL && strstr(eof_string, "\n.\r") == NULL);
-                    fclose(file);
-                    if(writen(new_socket, "OK\n\0", 4) < 0)
-                    {
-                        perror("send error");
-                        exit(EXIT_FAILURE);
                     }
                 }
                 else if(strncmp("LIST", buffer, 4) == 0)
@@ -435,8 +434,7 @@ int main(int argc, char *argv[])
             {
                 return (EXIT_FAILURE);
             }
-        }
-        while(strncmp(buffer, "QUIT", 4) != 0);
+        } while(strncmp(buffer, "QUIT", 4) != 0);
         close(new_socket);
     }
 }
@@ -584,4 +582,5 @@ ssize_t writen(int fd, const void *vptr, size_t n)
     };
     return n;
 }
+
 

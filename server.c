@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <dirent.h>
+#include <signal.h>
 
 #define BUF 1024
 
@@ -18,6 +19,14 @@ struct Message
     char recipient[9];
     char subject[81];
 };
+
+int create_socket;
+
+void sigquit_handler();
+
+void sigint_handler();
+
+void sighup_handler();
 
 void print_usage();
 
@@ -33,11 +42,16 @@ int get_mail_count(char *path);
 
 int main(int argc, char *argv[])
 {
+    (void) signal(SIGHUP, sighup_handler);
+    (void) signal(SIGQUIT, sigquit_handler);
+    (void) signal(SIGINT, sigint_handler);
+
     if(argc != 3)
     {
         print_usage();
     }
 
+    int new_socket;
     int port = (int) strtol(argv[1], NULL, 10);
     char dir_path[PATH_MAX];
     strcpy(dir_path, argv[2]);
@@ -47,8 +61,6 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    int create_socket;
-    int new_socket;
     socklen_t address_length;
     char buffer[BUF];
     int size;
@@ -113,14 +125,14 @@ int main(int argc, char *argv[])
                     char temp_path[PATH_MAX];
                     strcpy(temp_path, dir_path);
                     strcat(temp_path, "/");
-                    strcat(temp_path, message.sender);
+                    strcat(temp_path, message.recipient);
                     if(mkdir(temp_path, 0777) && errno != EEXIST)
                     {
                         perror("Error while creating a directory");
                         exit(EXIT_FAILURE);
                     }
                     strcat(temp_path, "/");
-                    strcat(temp_path, message.recipient);
+                    strcat(temp_path, message.sender);
 
                     FILE *file;
                     if((file = fopen(temp_path, "w")) == NULL)
@@ -148,7 +160,8 @@ int main(int argc, char *argv[])
                         strncpy(eof_string, &temp, 1);
                         eof_string[1] = buffer[0];
                         eof_string[2] = buffer[1];
-                    } while(strstr(eof_string, "\n.\n") == NULL && strstr(eof_string, "\n.\r") == NULL);
+                    }
+                    while(strstr(eof_string, "\n.\n") == NULL && strstr(eof_string, "\n.\r") == NULL);
                     fclose(file);
                     if(writen(new_socket, "OK\n\0", 4) < 0)
                     {
@@ -422,11 +435,29 @@ int main(int argc, char *argv[])
             {
                 return (EXIT_FAILURE);
             }
-        } while(strncmp(buffer, "QUIT", 4) != 0);
+        }
+        while(strncmp(buffer, "QUIT", 4) != 0);
         close(new_socket);
     }
+
+}
+
+void sigquit_handler()
+{
     close(create_socket);
-    return EXIT_SUCCESS;
+    exit(EXIT_SUCCESS);
+}
+
+void sigint_handler()
+{
+    close(create_socket);
+    exit(EXIT_SUCCESS);
+}
+
+void sighup_handler()
+{
+    close(create_socket);
+    exit(EXIT_SUCCESS);
 }
 
 int get_mail_count(char *path)
@@ -477,11 +508,15 @@ static ssize_t my_read(int fd, char *ptr)
         if((read_cnt = read(fd, read_buf, sizeof(read_buf))) < 0)
         {
             if(errno == EINTR)
+            {
                 goto again;
+            }
             return -1;
         }
         else if(read_cnt == 0)
+        {
             return 0;
+        }
         read_ptr = read_buf;
     };
     read_cnt--;
@@ -550,3 +585,4 @@ ssize_t writen(int fd, const void *vptr, size_t n)
     };
     return n;
 }
+

@@ -439,7 +439,6 @@ int main(int argc, char *argv[])
         while(strncmp(buffer, "QUIT", 4) != 0);
         close(new_socket);
     }
-
 }
 
 void sigquit_handler()

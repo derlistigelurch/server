@@ -41,6 +41,10 @@ ssize_t writen(int fd, const void *vptr, size_t n);
 
 int get_mail_count(char *path);
 
+void send_ok(int new_socket);
+
+void send_err(int new_socket);
+
 int main(int argc, char *argv[])
 {
     (void) signal(SIGHUP, sighup_handler);
@@ -140,11 +144,7 @@ int main(int argc, char *argv[])
                     FILE *file;
                     if((file = fopen(temp_path, "w")) == NULL)
                     {
-                        if(writen(new_socket, "ERR\n\0", 5) < 0)
-                        {
-                            perror("send error");
-                            exit(EXIT_FAILURE);
-                        }
+                        send_err(new_socket);
                     }
                     else
                     {
@@ -161,11 +161,7 @@ int main(int argc, char *argv[])
                             fprintf(file, "%s", buffer);
                         } while(!((buffer[0] == '.' && (buffer[1] == '\n' || buffer[1] == '\r'))));
                         fclose(file);
-                        if(writen(new_socket, "OK\n\0", 4) < 0)
-                        {
-                            perror("send error");
-                            exit(EXIT_FAILURE);
-                        }
+                        send_ok(new_socket);
                     }
                 }
                 else if(strncmp("LIST", buffer, 4) == 0)
@@ -196,11 +192,7 @@ int main(int argc, char *argv[])
 
                     if((dir = opendir(temp_path)) == NULL)
                     {
-                        if(writen(new_socket, "ERR\n\0", 5) < 0)
-                        {
-                            perror("send error");
-                            exit(EXIT_FAILURE);
-                        }
+                        send_err(new_socket);
                     }
                     else
                     {
@@ -237,11 +229,7 @@ int main(int argc, char *argv[])
                             }
                             else
                             {
-                                if(writen(new_socket, "ERR\n\0", 5) < 0)
-                                {
-                                    perror("send error");
-                                    exit(EXIT_FAILURE);
-                                }
+                                send_err(new_socket);
                             }
                         }
                         if(writen(new_socket, subjects, strlen(subjects)) < 0)
@@ -279,11 +267,7 @@ int main(int argc, char *argv[])
 
                     if((dir = opendir(temp_path)) == NULL)
                     {
-                        if(writen(new_socket, "ERR\n\0", 5) < 0)
-                        {
-                            perror("send error");
-                            exit(EXIT_FAILURE);
-                        }
+                        send_err(new_socket);
                     }
                     else
                     {
@@ -311,11 +295,7 @@ int main(int argc, char *argv[])
                                 strcat(path, dir_entry->d_name);
                                 if((file = fopen(path, "r")) != NULL)
                                 {
-                                    if(writen(new_socket, "OK\n\0", 4) < 0)
-                                    {
-                                        perror("send error");
-                                        exit(EXIT_FAILURE);
-                                    }
+                                   send_ok(new_socket);
                                     while(fgets(line, BUF, file) != NULL)
                                     {
                                         if(writen(new_socket, line, strlen(line)) < 0)
@@ -335,11 +315,7 @@ int main(int argc, char *argv[])
                         }
                         if(current_message_number != message_number)
                         {
-                            if(writen(new_socket, "ERR\n\0", 5) < 0)
-                            {
-                                perror("send error");
-                                exit(EXIT_FAILURE);
-                            }
+                            send_err(new_socket);
                         }
                     }
                 }
@@ -370,11 +346,7 @@ int main(int argc, char *argv[])
 
                     if((dir = opendir(temp_path)) == NULL)
                     {
-                        if(writen(new_socket, "ERR\n\0", 5) < 0)
-                        {
-                            perror("send error");
-                            exit(EXIT_FAILURE);
-                        }
+                        send_err(new_socket);
                     }
                     else
                     {
@@ -400,20 +372,12 @@ int main(int argc, char *argv[])
                                 strcat(path, dir_entry->d_name);
                                 if(remove(path) == 0)
                                 {
-                                    if(writen(new_socket, "OK\n\0", 4) < 0)
-                                    {
-                                        perror("send error");
-                                        exit(EXIT_FAILURE);
-                                    }
+                                   send_ok(new_socket);
                                     break;
                                 }
                                 else
                                 {
-                                    if(writen(new_socket, "ERR\n\0", 5) < 0)
-                                    {
-                                        perror("send error");
-                                        exit(EXIT_FAILURE);
-                                    }
+                                    send_err(new_socket);
                                     break;
                                 }
                             }
@@ -421,11 +385,7 @@ int main(int argc, char *argv[])
                         }
                         if(current_message_number != message_number)
                         {
-                            if(writen(new_socket, "ERR\n\0", 5) < 0)
-                            {
-                                perror("send error");
-                                exit(EXIT_FAILURE);
-                            }
+                            send_err(new_socket);
                         }
                     }
                 }
@@ -455,6 +415,24 @@ void sighup_handler()
 {
     close(create_socket);
     exit(EXIT_SUCCESS);
+}
+
+void send_ok(int new_socket)
+{
+    if(writen(new_socket, "OK\n\0", 4) < 0)
+    {
+        perror("send error");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void send_err(int new_socket)
+{
+    if(writen(new_socket, "ERR\n\0", 5) < 0)
+    {
+        perror("send error");
+        exit(EXIT_FAILURE);
+    }
 }
 
 int get_mail_count(char *path)
@@ -582,5 +560,3 @@ ssize_t writen(int fd, const void *vptr, size_t n)
     };
     return n;
 }
-
-

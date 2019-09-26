@@ -163,8 +163,7 @@ int main(int argc, char *argv[])
                     current_time = time(NULL);
                     snprintf(buffer, BUF, "%s_%ld", message.sender, current_time);
                     strncat(temp_path, buffer, strlen(buffer));
-
-
+                    
                     if((file = fopen(temp_path, "w")) == NULL)
                     {
                         send_err(new_socket);

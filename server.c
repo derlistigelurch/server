@@ -57,26 +57,45 @@ int main(int argc, char *argv[])
     }
 
     time_t current_time;
+    FILE *file;
+    DIR *dir;
+    struct dirent *dir_entry;
     int new_socket;
-    int port = (int) strtol(argv[1], NULL, 10);
-    char dir_path[PATH_MAX];
-    strcpy(dir_path, argv[2]);
-    if(mkdir(dir_path, 0777) && errno != EEXIST)
+    char mail_dir_path[PATH_MAX];
+    strncpy(mail_dir_path, argv[2], strlen(argv[2]));
+    int value = 1;
+
+    // create mail spool directory
+    if(mkdir(mail_dir_path, 0777) && errno != EEXIST)
     {
-        perror("error: ");
+        perror("mkdir error: ");
         exit(EXIT_FAILURE);
     }
 
     socklen_t address_length;
     char buffer[BUF];
     int size;
-    struct sockaddr_in address, client_address;
+    struct sockaddr_in address;
+    struct sockaddr_in client_address;
 
-    create_socket = socket(AF_INET, SOCK_STREAM, 0);
-    memset(&address, 0, sizeof(address));
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
+    if((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    {
+        perror("socket error");
+        exit(EXIT_FAILURE);
+    }
+
+    // set SO_REUSEADDR in create_socket to 1 to prevent the "Address already in use" error
+    if(setsockopt(create_socket, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(int)) == -1)
+    {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(&address, 0, sizeof(address)); // zero the rest of the struct
+    address.sin_family = AF_INET; // use TCP
+    address.sin_addr.s_addr = htonl(INADDR_ANY); // use my IP address
+    // all ports below 1024 are reserverd
+    address.sin_port = htons(strtol(argv[1], NULL, 10)); // use argv[1] as my port
 
     if(bind(create_socket, (struct sockaddr *) &address, sizeof(address)) != 0)
     {
@@ -128,20 +147,24 @@ int main(int argc, char *argv[])
                                 exit(EXIT_FAILURE);
                         }
                     }
+
                     char temp_path[PATH_MAX];
-                    strcpy(temp_path, dir_path);
+                    strcpy(temp_path, mail_dir_path);
                     strcat(temp_path, "/");
                     strcat(temp_path, message.recipient);
+
                     if(mkdir(temp_path, 0777) && errno != EEXIST)
                     {
                         perror("error");
                         exit(EXIT_FAILURE);
                     }
+
                     strcat(temp_path, "/");
                     current_time = time(NULL);
                     snprintf(buffer, BUF, "%s_%ld", message.sender, current_time);
                     strncat(temp_path, buffer, strlen(buffer));
-                    FILE *file;
+
+
                     if((file = fopen(temp_path, "w")) == NULL)
                     {
                         send_err(new_socket);
@@ -172,7 +195,7 @@ int main(int argc, char *argv[])
                         break;
                     }
                     char temp_path[PATH_MAX];
-                    strcpy(temp_path, dir_path);
+                    strcpy(temp_path, mail_dir_path);
                     strcat(temp_path, "/");
                     strcat(temp_path, buffer);
                     for(unsigned long i = 0; i < strlen(temp_path); i++)
@@ -186,9 +209,6 @@ int main(int argc, char *argv[])
                             temp_path[i] = '\0';
                         }
                     }
-
-                    DIR *dir;
-                    struct dirent *dir_entry;
 
                     if((dir = opendir(temp_path)) == NULL)
                     {
@@ -248,7 +268,7 @@ int main(int argc, char *argv[])
                         break;
                     }
                     char temp_path[PATH_MAX];
-                    strcpy(temp_path, dir_path);
+                    strcpy(temp_path, mail_dir_path);
                     strcat(temp_path, "/");
                     strcat(temp_path, buffer);
                     for(unsigned long i = 0; i < strlen(temp_path); i++)
@@ -262,9 +282,6 @@ int main(int argc, char *argv[])
                             temp_path[i] = '\0';
                         }
                     }
-                    DIR *dir;
-                    struct dirent *dir_entry;
-
                     if((dir = opendir(temp_path)) == NULL)
                     {
                         send_err(new_socket);
@@ -295,7 +312,7 @@ int main(int argc, char *argv[])
                                 strcat(path, dir_entry->d_name);
                                 if((file = fopen(path, "r")) != NULL)
                                 {
-                                   send_ok(new_socket);
+                                    send_ok(new_socket);
                                     while(fgets(line, BUF, file) != NULL)
                                     {
                                         if(writen(new_socket, line, strlen(line)) < 0)
@@ -327,7 +344,7 @@ int main(int argc, char *argv[])
                         break;
                     }
                     char temp_path[PATH_MAX];
-                    strcpy(temp_path, dir_path);
+                    strcpy(temp_path, mail_dir_path);
                     strcat(temp_path, "/");
                     strcat(temp_path, buffer);
                     for(unsigned long i = 0; i < strlen(temp_path); i++)
@@ -341,9 +358,6 @@ int main(int argc, char *argv[])
                             temp_path[i] = '\0';
                         }
                     }
-                    DIR *dir;
-                    struct dirent *dir_entry;
-
                     if((dir = opendir(temp_path)) == NULL)
                     {
                         send_err(new_socket);
@@ -372,7 +386,7 @@ int main(int argc, char *argv[])
                                 strcat(path, dir_entry->d_name);
                                 if(remove(path) == 0)
                                 {
-                                   send_ok(new_socket);
+                                    send_ok(new_socket);
                                     break;
                                 }
                                 else
@@ -392,7 +406,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                return (EXIT_FAILURE);
+                return EXIT_FAILURE;
             }
         } while(strncmp(buffer, "QUIT", 4) != 0);
         close(new_socket);
@@ -560,3 +574,17 @@ ssize_t writen(int fd, const void *vptr, size_t n)
     };
     return n;
 }
+
+
+/*
+████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████
+█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒█
+█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▄▒▒▒▒▒▒▒▒▒▒▒▒▄▀█▀█▀▄▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒█▀█▀█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒█
+█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒███▒▒▒▒▒▒▒▒▒▒▀▀▀▀▀▀▀▀▀▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒█▀█▀█▒▒▒▒▒▒▒▒▒▒▄▄▄▄▄▒▒▒▒▒▒▒▒▒█
+█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒█▀█▀█▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒█▀█▒▒▒▒▒▒▒▒▒▒▒▒▒   ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒█▀█▀█▒▒▒▒▒▒▒▒▒▒█▄█▄█▒▒▒▒▒▒▒▒▒█
+█▒▒▄▄▄▒▒▒█▒▒▒▒▄▒▒▒▒▒▒▒▒▒█▀█▀█▒▒█▒▒▒▄▄▄▒▒▒▒▒▒▒▒█▀█▀█▒▒█▒▒▒▒▄▒▒▒▒▄▄▄▒▒▒▄▄▄▒▒▒█▒▒▒▒▄▒▒▒▒▒▒▒▒▒█▀█▀█▒▒█▒▒▒▒▄▒▒█▄█▄█▒▒▒▄▄▄▒▒▒█
+█▒█▀█▀█▒█▀█▒▒█▀█▒▄███▄▒▒█▀█▀█▒█▀█▒▒█▀█▒▄███▄▒▒█▀█▀█▒█▀█▒▒█▀█▒▄███▄▒▒█▀█▀█▒█▀█▒▒█▀█▒▄███▄▒▒█▀█▀█▒█▀█▒▒█▀█▒█▄█▄█▒▒█▀█▀█▒▒█
+█░█▀█▀█░█▀██░█▀█░█▄█▄█░░█▀█▀█░█▀██░█▀█░█▄█▄█░░█▀█▀█░█▀██░█▀█░█▄█▄█░░█▀█▀█░█▀██░█▀█░█▄█▄█░░█▀█▀█░█▀██░█▀█░█▄█▄█░░█▀█▀█░░█
+█░█▀█▀█░█▀████▀█░█▄█▄█░░█▀█▀█░█▀████▀█░█▄█▄█░░█▀█▀█░█▀████▀█░█▄█▄█░░█▀█▀█░█▀████▀█░█▄█▄█░░█▀█▀█░█▀████▀█░█▄█▄█░░█▀█▀█░░█
+████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████
+*/

@@ -409,11 +409,7 @@ int main(int argc, char *argv[])
                     }
                 }
             }
-            if(size)
-            {
-                break;
-            }
-        } while(strncmp("quit", to_lower(del_new_line(buffer)), 4) != 0);
+        } while(strncmp("quit", to_lower(del_new_line(buffer)), 4) != 0 && size == 0);
         close(new_socket);
     }
 }

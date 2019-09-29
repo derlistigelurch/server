@@ -153,6 +153,7 @@ int main(int argc, char *argv[])
                                         break;
                                     }
                                     strncpy(message.sender, buffer, 8);
+                                    //send_ok(new_socket);
                                     i++;
                                     break;
                                 case 1:
@@ -162,6 +163,7 @@ int main(int argc, char *argv[])
                                         break;
                                     }
                                     strncpy(message.recipient, buffer, 8);
+                                    //send_ok(new_socket);
                                     i++;
                                     break;
                                 case 2:
@@ -172,6 +174,7 @@ int main(int argc, char *argv[])
                                     }
                                     strncpy(message.subject, buffer, 80);
                                     i++;
+                                    //send_ok(new_socket);
                                     break;
                                 default:
                                     exit(EXIT_FAILURE);

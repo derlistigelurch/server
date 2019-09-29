@@ -222,7 +222,6 @@ int main(int argc, char *argv[])
                                     perror("del error");
                                     exit(EXIT_FAILURE);
                                 }
-                                break;
                             }
                             else
                             {

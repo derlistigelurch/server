@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
     if(bind(create_socket, (struct sockaddr *) &address, sizeof(address)) != 0)
     {
         perror("bind error");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     listen(create_socket, 5);

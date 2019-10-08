@@ -136,8 +136,7 @@ int main(int argc, char *argv[])
         {
             if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
             {
-                if(strncmp("send", to_lower(del_new_line(buffer)), 4) ==
-                   0)                        //SEND: TO DO sendi etc
+                if(strncmp("send\n", to_lower(buffer), 5) == 0 || strncmp("send\r", to_lower(buffer), 5) == 0)
                 {
                     struct Message message;
                     int i = 0;
@@ -238,7 +237,7 @@ int main(int argc, char *argv[])
                         }
                     }
                 }
-                else if(strncmp("list", to_lower(del_new_line(buffer)), 4) == 0)
+                else if(strncmp("list\n", to_lower(buffer), 5) == 0 || strncmp("list\r", to_lower(buffer), 5) == 0)
                 {
                     if((size = check_receive(readline(new_socket, buffer, BUF))))
                     {
@@ -298,7 +297,7 @@ int main(int argc, char *argv[])
                         subjects[0] = '\0';
                     }
                 }
-                else if(strncmp("read", to_lower(del_new_line(buffer)), 4) == 0)
+                else if(strncmp("read\n", to_lower(buffer), 5) == 0 || (strncmp("read\r", to_lower(buffer), 5) == 0))
                 {
                     if((size = check_receive(readline(new_socket, buffer, BUF))))
                     {
@@ -359,7 +358,7 @@ int main(int argc, char *argv[])
                         }
                     }
                 }
-                else if(strncmp("del", to_lower(del_new_line(buffer)), 3) == 0)
+                else if(strncmp("del\n", to_lower(buffer), 4) == 0 || strncmp("del\r", to_lower(buffer), 4) == 0)
                 {
                     if((size = check_receive(readline(new_socket, buffer, BUF))))
                     {
@@ -417,7 +416,7 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        while(strncmp("quit", to_lower(del_new_line(buffer)), 4) != 0 && size == 0);
+        while((strncmp("quit\n", to_lower(buffer), 5) != 0 || strncmp("quit\r", to_lower(buffer), 5) != 0) && !size);
         close(new_socket);
     }
 }

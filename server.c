@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <time.h>
 #include <ctype.h>
+#include <wait.h>
 
 #define BUF 1024
 #define MAX_SENDER_SIZE 8
@@ -32,6 +33,8 @@ void sigquit_handler();
 void sigint_handler();
 
 void sighup_handler();
+
+void sigchild_handler();
 
 void print_usage();
 
@@ -66,6 +69,7 @@ int main(int argc, char *argv[])
     (void) signal(SIGHUP, sighup_handler);
     (void) signal(SIGQUIT, sigquit_handler);
     (void) signal(SIGINT, sigint_handler);
+    (void) signal(SIGCHLD, sigchild_handler);
 
     if(argc != 3)
     {
@@ -126,203 +130,224 @@ int main(int argc, char *argv[])
     {
         fprintf(stdout, "Waiting for connections...\n");
         new_socket = accept(create_socket, (struct sockaddr *) &client_address, &address_length);
-        if(new_socket > 0)
+
+        pid_t pid;
+        pid = fork();
+        switch(pid)
         {
-            fprintf(stdout, "Client connected from %s:%d...\n", inet_ntoa(client_address.sin_addr),
-                    ntohs(client_address.sin_port));
-            strcpy(buffer, "Welcome to the server, Please enter your command:\nSEND\nLIST\nREAD\nDEL\nQUIT\n\0");
-            if(writen(new_socket, buffer, strlen(buffer) + 1) < 0)
-            {
-                perror("send error");
-                exit(EXIT_FAILURE);
-            }
-        }
-        do
-        {
-            if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
-            {
-                if(strncmp("send\n", to_lower(buffer), 5) == 0 || strncmp("send\r", to_lower(buffer), 5) == 0)
+            case -1:
+                fprintf(stderr, "Unable to create child");
+                fflush(stderr);
+                return EXIT_FAILURE;
+            case 0:
+                close(create_socket);
+                if(new_socket > 0)
                 {
-                    struct Message message;
-                    int i = 0;
-                    send_ok(new_socket);
-                    while(i < 3)
+                    fprintf(stdout, "Client connected from %s:%d pid:%d...\n", inet_ntoa(client_address.sin_addr),
+                            ntohs(client_address.sin_port), pid);
+                    strcpy(buffer,
+                           "Welcome to the server , Please enter your command:\nSEND\nLIST\nREAD\nDEL\nQUIT\n\0");
+                    if(writen(new_socket, buffer, strlen(buffer) + 1) < 0)
                     {
-                        if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
+                        perror("send error");
+                        exit(EXIT_FAILURE);
+                    }
+                }
+                do
+                {
+                    if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
+                    {
+                        if(strncmp("send\n", to_lower(buffer), 5) == 0 || strncmp("send\r", to_lower(buffer), 5) == 0)
                         {
-                            switch(i)
+                            struct Message message;
+                            int i = 0;
+                            send_ok(new_socket);
+                            while(i < 3)
                             {
-                                case 0:
-                                    if(strlen(del_new_line(buffer)) > MAX_SENDER_SIZE)
+                                if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
+                                {
+                                    switch(i)
                                     {
-                                        send_err(new_socket);
-                                        break;
+                                        case 0:
+                                            if(strlen(del_new_line(buffer)) > MAX_SENDER_SIZE)
+                                            {
+                                                send_err(new_socket);
+                                                break;
+                                            }
+                                            strncpy(message.sender, buffer, 8);
+                                            send_ok(new_socket);
+                                            i++;
+                                            break;
+                                        case 1:
+                                            if(strlen(del_new_line(buffer)) > MAX_RECIPIENT_SIZE)
+                                            {
+                                                send_err(new_socket);
+                                                break;
+                                            }
+                                            strncpy(message.recipient, buffer, 8);
+                                            send_ok(new_socket);
+                                            i++;
+                                            break;
+                                        case 2:
+                                            if(strlen(del_new_line(buffer)) > MAX_SUBJECT_SIZE)
+                                            {
+                                                send_err(new_socket);
+                                                break;
+                                            }
+                                            strncpy(message.subject, buffer, 80);
+                                            i++;
+                                            send_ok(new_socket);
+                                            break;
+                                        default:
+                                            exit(EXIT_FAILURE);
                                     }
-                                    strncpy(message.sender, buffer, 8);
-                                    send_ok(new_socket);
-                                    i++;
+                                }
+                                else
+                                {
                                     break;
-                                case 1:
-                                    if(strlen(del_new_line(buffer)) > MAX_RECIPIENT_SIZE)
-                                    {
-                                        send_err(new_socket);
-                                        break;
-                                    }
-                                    strncpy(message.recipient, buffer, 8);
-                                    send_ok(new_socket);
-                                    i++;
-                                    break;
-                                case 2:
-                                    if(strlen(del_new_line(buffer)) > MAX_SUBJECT_SIZE)
-                                    {
-                                        send_err(new_socket);
-                                        break;
-                                    }
-                                    strncpy(message.subject, buffer, 80);
-                                    i++;
-                                    send_ok(new_socket);
-                                    break;
-                                default:
+                                }
+                            }
+                            if(size == 0)
+                            {
+                                user_dir_path = get_user_dir_path(mail_dir_path, message.recipient);
+
+                                if(mkdir(user_dir_path, 0777) && errno != EEXIST)
+                                {
+                                    perror("error");
                                     exit(EXIT_FAILURE);
+                                }
+
+                                strcat(user_dir_path, "/");
+                                current_time = time(NULL);
+                                snprintf(buffer, BUF, "%s_%ld", message.sender, current_time);
+                                strncat(user_dir_path, buffer, strlen(buffer));
+
+                                if((file = fopen(del_new_line(user_dir_path), "w")) == NULL)
+                                {
+                                    send_err(new_socket);
+                                }
+                                else
+                                {
+                                    fprintf(file, "%s\n", message.sender);
+                                    fprintf(file, "%s\n", message.recipient);
+                                    fprintf(file, "%s\n", message.subject);
+                                    do //message
+                                    {
+                                        if((size = check_receive(readline(new_socket, buffer, BUF))))
+                                        {
+                                            break;
+                                        }
+
+                                        fprintf(file, "%s", buffer);
+                                    }
+                                    while(!((buffer[0] == '.' && (buffer[1] == '\n' || buffer[1] == '\r'))));
+                                    fclose(file);
+                                    if(size)
+                                    {
+                                        if(remove(user_dir_path) != 0)
+                                        {
+                                            perror("del error");
+                                            exit(EXIT_FAILURE);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        send_ok(new_socket);
+                                    }
+                                }
                             }
                         }
-                        else
+                        else if(strncmp("list\n", to_lower(buffer), 5) == 0 ||
+                                strncmp("list\r", to_lower(buffer), 5) == 0)
                         {
-                            break;
-                        }
-                    }
-                    if(size == 0)
-                    {
-                        user_dir_path = get_user_dir_path(mail_dir_path, message.recipient);
+                            if((size = check_receive(readline(new_socket, buffer, BUF))))
+                            {
+                                break;
+                            }
+                            user_dir_path = get_user_dir_path(mail_dir_path, buffer);
+                            if((dir = opendir(del_new_line(user_dir_path))) == NULL)
+                            {
+                                send_err(new_socket);
+                            }
+                            else
+                            {
+                                if(list_messages(dir, user_dir_path, new_socket) == 0)
+                                {
+                                    send_ok(new_socket);
+                                }
+                                else
+                                {
+                                    send_err(new_socket);
+                                }
+                            }
 
-                        if(mkdir(user_dir_path, 0777) && errno != EEXIST)
-                        {
-                            perror("error");
-                            exit(EXIT_FAILURE);
                         }
-
-                        strcat(user_dir_path, "/");
-                        current_time = time(NULL);
-                        snprintf(buffer, BUF, "%s_%ld", message.sender, current_time);
-                        strncat(user_dir_path, buffer, strlen(buffer));
-
-                        if((file = fopen(del_new_line(user_dir_path), "w")) == NULL)
+                        else if(strncmp("read\n", to_lower(buffer), 5) == 0 ||
+                                (strncmp("read\r", to_lower(buffer), 5) == 0))
                         {
-                            send_err(new_socket);
-                        }
-                        else
-                        {
-                            fprintf(file, "%s\n", message.sender);
-                            fprintf(file, "%s\n", message.recipient);
-                            fprintf(file, "%s\n", message.subject);
-                            do //message
+                            if((size = check_receive(readline(new_socket, buffer, BUF))))
+                            {
+                                break;
+                            }
+                            user_dir_path = get_user_dir_path(mail_dir_path, buffer);
+                            if((dir = opendir(del_new_line(user_dir_path))) == NULL)
+                            {
+                                send_err(new_socket);
+                            }
+                            else
                             {
                                 if((size = check_receive(readline(new_socket, buffer, BUF))))
                                 {
                                     break;
                                 }
-
-                                fprintf(file, "%s", buffer);
-                            }
-                            while(!((buffer[0] == '.' && (buffer[1] == '\n' || buffer[1] == '\r'))));
-                            fclose(file);
-                            if(size)
-                            {
-                                if(remove(user_dir_path) != 0)
+                                if(read_message(dir, user_dir_path, (int) strtol(buffer, NULL, 10), new_socket) == 0)
                                 {
-                                    perror("del error");
-                                    exit(EXIT_FAILURE);
+                                    send_ok(new_socket);
                                 }
+                                else
+                                {
+                                    send_err(new_socket);
+                                }
+                            }
+                        }
+                        else if(strncmp("del\n", to_lower(buffer), 4) == 0 ||
+                                strncmp("del\r", to_lower(buffer), 4) == 0)
+                        {
+                            if((size = check_receive(readline(new_socket, buffer, BUF))))
+                            {
+                                break;
+                            }
+                            user_dir_path = get_user_dir_path(mail_dir_path, buffer);
+                            if((dir = opendir(del_new_line(user_dir_path))) == NULL)
+                            {
+                                send_err(new_socket);
                             }
                             else
                             {
-                                send_ok(new_socket);
+                                if((size = check_receive(readline(new_socket, buffer, BUF))))
+                                {
+                                    break;
+                                }
+                                if(del_message(dir, user_dir_path, (int) strtol(buffer, NULL, 10)) == 0)
+                                {
+                                    send_ok(new_socket);
+                                }
+                                else
+                                {
+                                    send_err(new_socket);
+                                }
                             }
                         }
                     }
                 }
-                else if(strncmp("list\n", to_lower(buffer), 5) == 0 || strncmp("list\r", to_lower(buffer), 5) == 0)
-                {
-                    if((size = check_receive(readline(new_socket, buffer, BUF))))
-                    {
-                        break;
-                    }
-                    user_dir_path = get_user_dir_path(mail_dir_path, buffer);
-                    if((dir = opendir(del_new_line(user_dir_path))) == NULL)
-                    {
-                        send_err(new_socket);
-                    }
-                    else
-                    {
-                        if(list_messages(dir, user_dir_path, new_socket) == 0)
-                        {
-                            send_ok(new_socket);
-                        }
-                        else
-                        {
-                            send_err(new_socket);
-                        }
-                    }
-
-                }
-                else if(strncmp("read\n", to_lower(buffer), 5) == 0 || (strncmp("read\r", to_lower(buffer), 5) == 0))
-                {
-                    if((size = check_receive(readline(new_socket, buffer, BUF))))
-                    {
-                        break;
-                    }
-                    user_dir_path = get_user_dir_path(mail_dir_path, buffer);
-                    if((dir = opendir(del_new_line(user_dir_path))) == NULL)
-                    {
-                        send_err(new_socket);
-                    }
-                    else
-                    {
-                        if((size = check_receive(readline(new_socket, buffer, BUF))))
-                        {
-                            break;
-                        }
-                        if(read_message(dir, user_dir_path, (int) strtol(buffer, NULL, 10), new_socket) == 0)
-                        {
-                            send_ok(new_socket);
-                        }
-                        else
-                        {
-                            send_err(new_socket);
-                        }
-                    }
-                }
-                else if(strncmp("del\n", to_lower(buffer), 4) == 0 || strncmp("del\r", to_lower(buffer), 4) == 0)
-                {
-                    if((size = check_receive(readline(new_socket, buffer, BUF))))
-                    {
-                        break;
-                    }
-                    user_dir_path = get_user_dir_path(mail_dir_path, buffer);
-                    if((dir = opendir(del_new_line(user_dir_path))) == NULL)
-                    {
-                        send_err(new_socket);
-                    }
-                    else
-                    {
-                        if((size = check_receive(readline(new_socket, buffer, BUF))))
-                        {
-                            break;
-                        }
-                        if(del_message(dir, user_dir_path, (int) strtol(buffer, NULL, 10)) == 0)
-                        {
-                            send_ok(new_socket);
-                        }
-                        else
-                        {
-                            send_err(new_socket);
-                        }
-                    }
-                }
-            }
+                while((strncmp("quit\n", to_lower(buffer), 5) != 0 || strncmp("quit\r", to_lower(buffer), 5) != 0) &&
+                      !size);
+                close(new_socket);
+                return EXIT_SUCCESS;
+            default:
+                close(new_socket);
+                continue;
         }
-        while((strncmp("quit\n", to_lower(buffer), 5) != 0 || strncmp("quit\r", to_lower(buffer), 5) != 0) && !size);
-        close(new_socket);
     }
 }
 
@@ -489,6 +514,16 @@ void sighup_handler()
 {
     close(create_socket);
     exit(EXIT_SUCCESS);
+}
+
+void sigchild_handler()
+{
+    pid_t pid;
+    int ret;
+    while((pid = waitpid(-1, &ret, WNOHANG)) > 0)
+    {
+        printf("Child-Server mit pid=%d hat sich beendet\n", pid);
+    }
 }
 
 void send_ok(int new_socket)

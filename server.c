@@ -86,9 +86,9 @@ int main(int argc, char *argv[])
     int value = 1;
 
     // create mail spool directory
-    if(mkdir(mail_dir_path, 0777) && errno != EEXIST)
+    if(mkdir(mail_dir_path, 0777) && errno != EEXIST) // do nothing if directory already exists
     {
-        perror("mkdir error: ");
+        perror("mkdir error: ");// error while creating a directory
         exit(EXIT_FAILURE);
     }
 
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 
                                 strcat(user_dir_path, "/");
                                 current_time = time(NULL);
-                                snprintf(buffer, BUF, "%s_%ld", message.sender, current_time);
+                                snprintf(buffer, BUF, "%ld_%s", current_time, message.sender);
                                 strncat(user_dir_path, buffer, strlen(buffer));
 
                                 if((file = fopen(del_new_line(user_dir_path), "w")) == NULL)
@@ -522,7 +522,7 @@ void sigchild_handler()
     int ret;
     while((pid = waitpid(-1, &ret, WNOHANG)) > 0)
     {
-        printf("Child-Server mit pid=%d hat sich beendet\n", pid);
+        printf("Child-Server (pid:%d) shut down\n", pid);
     }
 }
 
@@ -563,7 +563,7 @@ int get_mail_count(char *path)
 
 void print_usage()
 {
-    fprintf(stdout, "Usage: server PORT DIRECTORY\n");
+    fprintf(stderr, "Usage: server PORT DIRECTORY\n");
     exit(EXIT_FAILURE);
 }
 
@@ -704,7 +704,7 @@ char *get_user_dir_path(char *mail_dir_path, char *username)
 
 char *to_lower(char *buffer)
 {
-    for(int i = 0; (int) i < strlen(buffer); ++i)
+    for(int i = 0; (int) i < strlen(buffer); i++)
     {
         buffer[i] = (char) tolower(buffer[i]);
     }

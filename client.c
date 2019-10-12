@@ -6,59 +6,42 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+#include <errno.h>
 
 #define BUF 1024
-#define PORT 6543
+#define SENDER_ERROR 1
+#define RECIPIENT_ERROR 2
+#define SUBJECT_ERROR 3
+#define USERNAME_ERROR 1
+#define MAIL_NOT_FOUND_ERROR 2
+#define MAIL_DIR_IS_EMPTY 3
 
-int send_okay(int createsocket, char stringy[BUF], int length, int errorcode)
-{
-    send(createsocket, stringy, length, 0);
-    recv(createsocket, stringy, BUF - 1, 0);
-    if(strncmp(stringy, "OK\n", 3) == 0)
-    {
-        return 0;
-    }
-    else
-    {
-        switch(errorcode)
-        {
-            case 2:
-                printf("ERROR! The sender must not have more than 8 characters\n");
-                break;
-            case 3:
-                printf("ERROR! The receiver must not have more than 8 characters\n");
-                break;
-            case 4:
-                printf("ERROR! The subject must not have more than 80 characters\n");
-                break;
-            case 5:
-                printf("ERROR! There was a problem with your message\n");
-                break;
-            default:
-                printf("An error has occurred!\n");
-        }
-        return errorcode;
-    }
-    /* }else
-     return -1;*/
-}
+int create_socket;
 
-int main(int argc, char **argv)
+void print_usage();
+
+char *to_lower(char *buffer);
+
+ssize_t writen(int fd, const void *vptr, size_t n);
+
+int check_receive(int size);
+
+int send_error_check(int error_code);
+
+int list_error_check();
+
+int read_del_error_check(int error_code);
+
+int main(int argc, char *argv[])
 {
-    int create_socket;
     char buffer[BUF];
     struct sockaddr_in address;
     int size;
-    int errorc = 0;
-    char sender[BUF];
-    char receiver[BUF];
-    char subject[BUF];
-    char answer[BUF];
 
-    if(argc < 2)
+    if(argc < 3)
     {
-        printf("Usage: %s ServerAdresse\n", argv[0]);
-        exit(EXIT_FAILURE);
+        print_usage();
     }
 
     if((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
@@ -69,85 +52,359 @@ int main(int argc, char **argv)
 
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(strtol(argv[2], NULL, 10));
     inet_aton(argv[1], &address.sin_addr);
 
     if(connect(create_socket, (struct sockaddr *) &address, sizeof(address)) == 0)
     {
-        system("clear");
-        printf("Connection with server (%s) established\n", inet_ntoa(address.sin_addr));
+        fprintf(stdout, "Connection with server (%s) established\n", inet_ntoa(address.sin_addr));
         size = recv(create_socket, buffer, BUF - 1, 0);
         if(size > 0)
         {
             buffer[size] = '\0';
-            printf("%s", buffer);
+            fprintf(stdout, "%s", buffer);
         }
     }
     else
     {
-        perror("Connect error - no server available");
-        return EXIT_FAILURE;
+        perror("Connect error - no server available\n");
+        exit(EXIT_FAILURE);
     }
-
     do
     {
-        printf("Command: ");
+        fprintf(stdout, "Command: ");
         fgets(buffer, BUF, stdin);
-        //printf("TEST: %s", buffer);
-        if(strncmp(buffer, "SEND\n", 5) == 0 || strncmp(buffer, "send\n", 5) == 0)
-        {             //SEND
-            if(send_okay(create_socket, buffer, strlen(buffer), 1) == 0)
+
+        if(strncmp(to_lower(buffer), "send\n", 5) == 0)
+        {
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
+            {
+                if(strncmp(buffer, "OK\n", 3) == 0)
+                {
+                    do
+                    {
+                        fprintf(stdout, "Sender: ");
+                        fgets(buffer, BUF, stdin);
+                        if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                        {
+                            perror("send error");
+                            exit(EXIT_FAILURE);
+                        }
+                        memset(buffer, 0, sizeof(buffer));
+                    }
+                    while(send_error_check(SENDER_ERROR) != 0);
+                    do
+                    {
+                        fprintf(stdout, "Recipient: ");
+                        fgets(buffer, BUF, stdin);
+                        if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                        {
+                            perror("send error");
+                            exit(EXIT_FAILURE);
+                        }
+                        memset(buffer, 0, sizeof(buffer));
+                    }
+                    while(send_error_check(RECIPIENT_ERROR) != 0);
+                    do
+                    {
+                        fprintf(stdout, "Subject: ");
+                        fgets(buffer, BUF, stdin);
+                        if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                        {
+                            perror("send error");
+                            exit(EXIT_FAILURE);
+                        }
+                        memset(buffer, 0, sizeof(buffer));
+                    }
+                    while(send_error_check(SUBJECT_ERROR) != 0);
+                    fprintf(stdout, "Content:\n");
+                    do
+                    {
+                        fgets(buffer, BUF, stdin);
+                        if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                        {
+                            perror("send error");
+                            exit(EXIT_FAILURE);
+                        }
+                    }
+                    while(!((buffer[0] == '.' && buffer[1] == '\n')));
+                    if(check_receive(recv(create_socket, buffer, BUF - 1, 0)) == 0)
+                    {
+                        if(strncmp(buffer, "OK\n", 3) == 0)
+                        {
+                            fprintf(stdout, "Message sent!\n");
+                        }
+                        else
+                        {
+                            fprintf(stderr, "ERROR! Unable to send message!\n");
+                        }
+                    }
+                }
+            }
+        }
+        else if(strncmp(to_lower(buffer), "list\n", 5) == 0)
+        {
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
             {
                 do
                 {
-                    printf("Sender: ");
-                    fgets(sender, BUF, stdin);
-                }
-                while(send_okay(create_socket, sender, strlen(sender), 2) != 0);
-                do
-                {
-                    printf("Receiver: ");
-                    fgets(receiver, BUF, stdin);
-                }
-                while(send_okay(create_socket, receiver, strlen(receiver), 3) != 0);
-                do
-                {
-                    printf("Subject: ");
-                    fgets(subject, BUF, stdin);
-                }
-                while(send_okay(create_socket, subject, strlen(subject), 4) != 0);
-
-                if(errorc == 0)
-                {
-                    printf("Message: ");
-                    //strncmp("list", to_lower(del_new_line(buffer)), 4) == 0
-                    while(1)
+                    fprintf(stdout, "Username: ");
+                    fgets(buffer, BUF, stdin);
+                    if(writen(create_socket, buffer, strlen(buffer)) < 0)
                     {
-                        fgets(buffer, BUF, stdin);
-                        send(create_socket, buffer, strlen(buffer), 0);
-                        if(strncmp(buffer, ".", 1) == 0)
-                        {
-                            recv(create_socket, answer, BUF - 1, 0);
-                            break;
-                        }
+                        perror("send error");
+                        exit(EXIT_FAILURE);
                     }
-
-
+                    memset(buffer, 0, sizeof(buffer));
                 }
-                if(strncmp(answer, "OK\n", 3) == 0)
+                while(list_error_check() != 0);
+                while(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) != 0)
                 {
-                    system("clear");
-                    printf("Message sent!\n\n");
+                    fprintf(stdout, "%s", buffer);
                 }
+            }
+        }
+        else if(strncmp(to_lower(buffer), "read\n", 5) == 0)
+        {
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
+            {
+                do
+                {
+                    fprintf(stdout, "Username: ");
+                    fgets(buffer, BUF, stdin);
+                    if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                    {
+                        perror("send error");
+                        exit(EXIT_FAILURE);
+                    }
+                    memset(buffer, 0, sizeof(buffer));
+                }
+                while(read_del_error_check(USERNAME_ERROR) != 0);
+                if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
+                {
+                    do
+                    {
+                        fprintf(stdout, "Number: ");
+                        fgets(buffer, BUF, stdin);
+                        if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                        {
+                            perror("send error");
+                            exit(EXIT_FAILURE);
+                        }
+                        memset(buffer, 0, sizeof(buffer));
+                    }
+                    while(read_del_error_check(MAIL_NOT_FOUND_ERROR) != 0);
+                    while(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) != 0)
+                    {
+                        fprintf(stdout, "%s", buffer);
+                        memset(buffer, 0, sizeof(buffer));
+                    }
+                }
+                else
+                {
+                    fprintf(stderr, "ERROR! Mail directory is EMPTY!\n");
+                }
+            }
+        }
+        else if(strncmp(to_lower(buffer), "del\n", 4) == 0)
+        {
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
+            {
+                do
+                {
+                    fprintf(stdout, "Username: ");
+                    fgets(buffer, BUF, stdin);
+                    if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                    {
+                        perror("send error");
+                        exit(EXIT_FAILURE);
+                    }
+                    memset(buffer, 0, sizeof(buffer));
+                }
+                while(read_del_error_check(USERNAME_ERROR) != 0);
+                if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
+                {
+                    do
+                    {
+                        fprintf(stdout, "Number: ");
+                        fgets(buffer, BUF, stdin);
+                        if(writen(create_socket, buffer, strlen(buffer)) < 0)
+                        {
+                            perror("send error");
+                            exit(EXIT_FAILURE);
+                        }
+                        memset(buffer, 0, sizeof(buffer));
+                    }
+                    while(read_del_error_check(MAIL_NOT_FOUND_ERROR) != 0);
+                    if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
+                    {
+                        fprintf(stdout, "Message deleted!\n");
+                    }
+                    else
+                    {
+                        fprintf(stderr, "ERROR! Unable to delete message!\n");
+                    }
+                }
+                else
+                {
+                    fprintf(stderr, "ERROR! Mail directory is EMPTY!\n");
+                }
+            }
+        }
+    }
+    while(strcmp(to_lower(buffer), "quit\n") != 0);
+    close(create_socket);
+    return EXIT_SUCCESS;
+}
+
+void print_usage()
+{
+    fprintf(stderr, "Usage: client SERVERADDRESS PORT\n");
+    exit(EXIT_FAILURE);
+}
+
+int send_error_check(int error_code)
+{
+    char buffer[BUF];
+    if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
+    {
+        if(strncmp(buffer, "OK\n", 3) == 0)
+        {
+            return EXIT_SUCCESS;
+        }
+        switch(error_code)
+        {
+            case SENDER_ERROR:
+                fprintf(stderr, "ERROR! The SENDER must not have more than 8 characters!\n");
+                return EXIT_FAILURE;
+            case RECIPIENT_ERROR:
+                fprintf(stderr, "ERROR! The RECIPIENT must not have more than 8 characters!\n");
+                return EXIT_FAILURE;
+            case SUBJECT_ERROR:
+                fprintf(stderr, "ERROR! The SUBJECT must not have more than 80 characters!\n");
+                return EXIT_FAILURE;
+            default:
+                fprintf(stderr, "Something went terribly wrong!\n");
+                exit(EXIT_FAILURE);
+        }
+    }
+    exit(EXIT_FAILURE);
+}
+
+int list_error_check()
+{
+    char buffer[BUF];
+    memset(buffer, 0, sizeof(buffer));
+    if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
+    {
+        if(strncmp(buffer, "OK\n", 3) == 0)
+        {
+            return EXIT_SUCCESS;
+        }
+        fprintf(stderr, "ERROR! USERNAME not found!\n");
+        return EXIT_FAILURE;
+    }
+    exit(EXIT_FAILURE);
+}
+
+int read_del_error_check(int error_code)
+{
+    char buffer[BUF];
+    if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
+    {
+        if(strncmp(buffer, "OK\n", 3) == 0)
+        {
+            return EXIT_SUCCESS;
+        }
+        switch(error_code)
+        {
+            case USERNAME_ERROR:
+                fprintf(stderr, "ERROR! USERNAME not found!\n");
+                return EXIT_FAILURE;
+            case MAIL_NOT_FOUND_ERROR:
+                fprintf(stderr, "ERROR! MAIL not found!\n");
+                return EXIT_FAILURE;
+            case MAIL_DIR_IS_EMPTY:
+                fprintf(stderr, "ERROR! MAIL not found!\n");
+                return MAIL_DIR_IS_EMPTY;
+            default:
+                fprintf(stderr, "Something went terribly wrong!\n");
+                exit(EXIT_FAILURE);
+        }
+    }
+    exit(EXIT_FAILURE);
+}
+
+char *to_lower(char *buffer)
+{
+    for(int i = 0; (int) i < strlen(buffer); i++)
+    {
+        buffer[i] = (char) tolower(buffer[i]);
+    }
+    return buffer;
+}
+
+// write n bytes to a descriptor
+ssize_t writen(int fd, const void *vptr, size_t n)
+{
+    size_t nleft;
+    ssize_t nwritten;
+    const char *ptr;
+    ptr = vptr;
+    nleft = n;
+    while(nleft > 0)
+    {
+        if((nwritten = write(fd, ptr, nleft)) <= 0)
+        {
+            if(errno == EINTR)
+            {
+                nwritten = 0; // and call write() again
             }
             else
             {
-                printf("An error has occurred\n");
+                return -1;
             }
-            errorc = 0;
         }
+        nleft -= nwritten;
+        ptr += nwritten;
     }
-    while(strcmp(buffer, "quit\n") != 0);
-    close(create_socket);
-    return EXIT_SUCCESS;
+    return n;
+}
+
+int check_receive(int size)
+{
+    if(size > 0)
+    {
+        return EXIT_SUCCESS;
+    }
+    else if(size < 0)
+    {
+        perror("recv error");
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        fprintf(stdout, "Lost connection to server\n");
+        exit(EXIT_FAILURE);
+    }
 }

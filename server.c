@@ -21,6 +21,7 @@
 #define SENDER 1
 #define RECIPIENT 2
 #define SUBJECT 3
+#define CONTENT 4
 
 struct Message
 {
@@ -132,6 +133,7 @@ int main(int argc, char *argv[])
     while(1)
     {
         new_socket = accept(create_socket, (struct sockaddr *) &client_address, &address_length);
+
 
         pid_t pid;
         pid = fork();
@@ -311,9 +313,9 @@ int main(int argc, char *argv[])
 
                             send_ok(new_socket);
                             int message_number_is_valid = 0;
-                            int message_number = get_mail_count(user_dir_path);
+                            int message_number = 1;
 
-                            if(message_number == 0)
+                            if(get_mail_count(user_dir_path) == 0)
                             {
                                 send_err(new_socket);
                             }
@@ -327,8 +329,10 @@ int main(int argc, char *argv[])
                                     {
                                         break;
                                     }
+                                    message_number = (int) strtol(buffer, NULL, 10);
                                     if((message_number_is_valid =
-                                                strtol(buffer, NULL, 10) > message_number || message_number <= 0))
+                                                message_number > get_mail_count(user_dir_path) ||
+                                                message_number <= 0))
                                     {
                                         send_err(new_socket);
                                     }
@@ -368,9 +372,9 @@ int main(int argc, char *argv[])
 
                             send_ok(new_socket);
                             int message_number_is_valid = 0;
-                            int message_number = get_mail_count(user_dir_path);
+                            int message_number = 1;
 
-                            if(message_number == 0)
+                            if(get_mail_count(user_dir_path) == 0)
                             {
                                 send_err(new_socket);
                             }
@@ -384,8 +388,10 @@ int main(int argc, char *argv[])
                                     {
                                         break;
                                     }
+                                    message_number = (int) strtol(buffer, NULL, 10);
                                     if((message_number_is_valid =
-                                                strtol(buffer, NULL, 10) > message_number || message_number <= 0))
+                                                message_number > get_mail_count(user_dir_path) ||
+                                                message_number <= 0))
                                     {
                                         send_err(new_socket);
                                     }
@@ -393,7 +399,7 @@ int main(int argc, char *argv[])
                                 while(message_number_is_valid != 0);
                                 send_ok(new_socket);
 
-                                if(del_message(dir, user_dir_path, (int) strtol(buffer, NULL, 10)) == 0)
+                                if(del_message(dir, user_dir_path, message_number) == 0)
                                 {
                                     send_ok(new_socket);
                                 }
@@ -526,13 +532,35 @@ int read_message(DIR *dir, char *user_dir_path, int message_number, int new_sock
 
             if((file = fopen(path, "r")) != NULL)
             {
+                int i = 1;
+                memset(buffer, 0, sizeof(buffer));
+                //TODO format output
                 while(fgets(line, BUF, file) != NULL)
                 {
-                    if(writen(new_socket, line, strlen(line)) < 0)
+                    switch(i)
+                    {
+                        case SENDER:
+                            snprintf(buffer, BUF, "\nFROM: %s", line);
+                            break;
+                        case RECIPIENT:
+                            snprintf(buffer, BUF, "TO: %s", line);
+                            break;
+                        case SUBJECT:
+                            snprintf(buffer, BUF, "SUBJECT: %s", line);
+                            break;
+                        case CONTENT:
+                            snprintf(buffer, BUF, "CONTENT:\n%s", line);
+                            break;
+                        default:
+                            snprintf(buffer, BUF, "%s", line);
+                            break;
+                    }
+                    if(writen(new_socket, buffer, strlen(buffer)) < 0)
                     {
                         perror("send error");
                         exit(EXIT_FAILURE);
                     }
+                    i++;
                 }
                 fclose(file);
                 return EXIT_SUCCESS;

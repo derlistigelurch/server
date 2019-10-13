@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
     }
     do
     {
+        memset(buffer, 0, sizeof(buffer));
         fprintf(stdout, "Command: ");
         fgets(buffer, BUF, stdin);
 
@@ -168,9 +169,16 @@ int main(int argc, char *argv[])
                     memset(buffer, 0, sizeof(buffer));
                 }
                 while(list_error_check() != 0);
-                while(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) != 0)
+                if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
                 {
-                    fprintf(stdout, "%s", buffer);
+                    if(strncmp(buffer, "ERR\n", 4) == 0)
+                    {
+                        fprintf(stderr, "Something went terribly wrong");
+                    }
+                    else
+                    {
+                        fprintf(stdout, "%s", buffer);
+                    }
                 }
             }
         }

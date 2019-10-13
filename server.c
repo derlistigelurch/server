@@ -66,7 +66,7 @@ int del_message(DIR *dir, char *user_dir_path, int message_number);
 
 int read_message(DIR *dir, char *user_dir_path, int message_number, int new_socket);
 
-int list_messages(DIR *dir, char *user_dir_path, int new_socket);
+char *list_messages(DIR *dir, char *user_dir_path);
 
 int main(int argc, char *argv[])
 {
@@ -272,7 +272,7 @@ int main(int argc, char *argv[])
                                     break;
                                 }
 
-                                user_dir_path = get_user_dir_path(mail_dir_path, buffer);
+                                user_dir_path = get_user_dir_path(mail_dir_path, del_new_line(buffer));
 
                                 if((dir = opendir(del_new_line(user_dir_path))) == NULL)
                                 {
@@ -281,14 +281,20 @@ int main(int argc, char *argv[])
                             }
                             while(dir == NULL);
                             send_ok(new_socket);
-                            if(list_messages(dir, user_dir_path, new_socket) == 0)
+                            char *subjects = NULL;
+                            if((subjects = list_messages(dir, user_dir_path)) != NULL)
                             {
-                                send_ok(new_socket);
+                                if(writen(new_socket, subjects, strlen(subjects)) < 0)
+                                {
+                                    perror("send error");
+                                    exit(EXIT_FAILURE);
+                                }
                             }
                             else
                             {
                                 send_err(new_socket);
                             }
+
                         }
                         else if(strncmp("read\n", to_lower(buffer), 5) == 0 ||
                                 (strncmp("read\r", to_lower(buffer), 5) == 0))
@@ -449,60 +455,56 @@ void sigchild_handler()
     }
 }
 
-int list_messages(DIR *dir, char *user_dir_path, int new_socket)
+char *list_messages(DIR *dir, char *user_dir_path)
 {
-    char buffer[BUF];
+    static char buffer[BUF];
+    char subjects[BUF];
+    memset(&buffer, 0, sizeof(buffer));
+    memset(&subjects, 0, sizeof(subjects));
     struct dirent *dir_entry = NULL;
     FILE *file = NULL;
     int counter = 1;
 
     snprintf(buffer, BUF, "%d\n", get_mail_count(user_dir_path));
-    if(writen(new_socket, buffer, strlen(buffer)) < 0)
+    if(get_mail_count(user_dir_path) > 0)
     {
-        perror("send error");
-        exit(EXIT_FAILURE);
-    }
-
-    while((dir_entry = readdir(dir)) != NULL)
-    {
-        if(!strcmp(dir_entry->d_name, ".") || !strcmp(dir_entry->d_name, ".."))
+        while((dir_entry = readdir(dir)) != NULL)
         {
-            continue;
-        }
-
-        char line[BUF];
-        char temp_path[PATH_MAX];
-        memset(&buffer, 0, sizeof(buffer));
-
-        strncpy(temp_path, user_dir_path, strlen(user_dir_path));
-        temp_path[strlen(user_dir_path)] = '\0';
-        strcat(temp_path, "/");
-        strcat(temp_path, dir_entry->d_name);
-
-        if((file = fopen(temp_path, "r")) != NULL)
-        {
-            for(int i = 0; i < 3; i++)
+            if(!strcmp(dir_entry->d_name, ".") || !strcmp(dir_entry->d_name, ".."))
             {
-                fgets(line, BUF, file);
+                continue;
             }
 
-            fclose(file);
-            temp_path[strlen(user_dir_path)] = '\0';
-            snprintf(buffer, BUF, "%d.) %s", counter, line);
-            counter++;
+            char line[BUF];
+            char temp_path[PATH_MAX];
 
-            if(writen(new_socket, buffer, strlen(buffer)) < 0)
+            strncpy(temp_path, user_dir_path, strlen(user_dir_path));
+            temp_path[strlen(user_dir_path)] = '\0';
+            strcat(temp_path, "/");
+            strcat(temp_path, dir_entry->d_name);
+
+            if((file = fopen(temp_path, "r")) != NULL)
             {
-                perror("send error");
+                for(int i = 0; i < 3; i++)
+                {
+                    fgets(line, BUF, file);
+                }
+
+                fclose(file);
+
+                temp_path[strlen(user_dir_path)] = '\0';
+                snprintf(subjects, BUF, "%d.) %s", counter, line);
+                strcat(buffer, subjects);
+                counter++;
+            }
+            else
+            {
+                perror("Unable to open file\n");
                 exit(EXIT_FAILURE);
             }
         }
-        else
-        {
-            return EXIT_FAILURE;
-        }
     }
-    return EXIT_SUCCESS;
+    return buffer;
 }
 
 int read_message(DIR *dir, char *user_dir_path, int message_number, int new_socket)
@@ -560,6 +562,7 @@ int read_message(DIR *dir, char *user_dir_path, int message_number, int new_sock
                         exit(EXIT_FAILURE);
                     }
                     i++;
+                    usleep(1 * 1000);// wait 1 milisecond
                 }
                 fclose(file);
                 return EXIT_SUCCESS;

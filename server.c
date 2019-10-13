@@ -134,7 +134,6 @@ int main(int argc, char *argv[])
     {
         new_socket = accept(create_socket, (struct sockaddr *) &client_address, &address_length);
 
-
         pid_t pid;
         pid = fork();
         switch(pid)
@@ -534,7 +533,7 @@ int read_message(DIR *dir, char *user_dir_path, int message_number, int new_sock
             {
                 int i = 1;
                 memset(buffer, 0, sizeof(buffer));
-                //TODO format output
+
                 while(fgets(line, BUF, file) != NULL)
                 {
                     switch(i)

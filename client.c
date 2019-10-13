@@ -217,10 +217,9 @@ int main(int argc, char *argv[])
                         memset(buffer, 0, sizeof(buffer));
                     }
                     while(read_del_error_check(MAIL_NOT_FOUND_ERROR) != 0);
-                    while(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) != 0)
+                    if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
                     {
                         fprintf(stdout, "%s", buffer);
-                        memset(buffer, 0, sizeof(buffer));
                     }
                 }
                 else

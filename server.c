@@ -64,7 +64,7 @@ char *to_lower(char *buffer);
 
 int del_message(DIR *dir, char *user_dir_path, int message_number);
 
-int read_message(DIR *dir, char *user_dir_path, int message_number, int new_socket);
+char *read_message(DIR *dir, char *user_dir_path, int message_number);
 
 char *list_messages(DIR *dir, char *user_dir_path);
 
@@ -345,9 +345,14 @@ int main(int argc, char *argv[])
                                 while(message_number_is_valid != 0);
                                 send_ok(new_socket);
 
-                                if(read_message(dir, user_dir_path, message_number, new_socket) == 0)
+                                char *message = NULL;
+                                if((message = read_message(dir, user_dir_path, message_number)) != NULL)
                                 {
-                                    send_ok(new_socket);
+                                    if(writen(new_socket, message, strlen(message)) < 0)
+                                    {
+                                        perror("send error");
+                                        exit(EXIT_FAILURE);
+                                    }
                                 }
                                 else
                                 {
@@ -459,8 +464,8 @@ char *list_messages(DIR *dir, char *user_dir_path)
 {
     static char buffer[BUF];
     char subjects[BUF];
-    memset(&buffer, 0, sizeof(buffer));
-    memset(&subjects, 0, sizeof(subjects));
+    memset(buffer, 0, sizeof(buffer));
+    memset(subjects, 0, sizeof(subjects));
     struct dirent *dir_entry = NULL;
     FILE *file = NULL;
     int counter = 1;
@@ -507,14 +512,15 @@ char *list_messages(DIR *dir, char *user_dir_path)
     return buffer;
 }
 
-int read_message(DIR *dir, char *user_dir_path, int message_number, int new_socket)
+char *read_message(DIR *dir, char *user_dir_path, int message_number)
 {
-    char buffer[BUF];
-    memset(&buffer, 0, sizeof(buffer));
+    char temp_buffer[BUF];
+    memset(temp_buffer, 0, sizeof(temp_buffer));
+    static char buffer[BUF];
+    memset(buffer, 0, sizeof(buffer));
     struct dirent *dir_entry = NULL;
     FILE *file = NULL;
     int current_message_number = 1;
-
     while((dir_entry = readdir(dir)) != NULL)
     {
         if(!strcmp(dir_entry->d_name, ".") || !strcmp(dir_entry->d_name, ".."))
@@ -525,7 +531,6 @@ int read_message(DIR *dir, char *user_dir_path, int message_number, int new_sock
         {
             char line[BUF];
             char path[PATH_MAX];
-
             path[strlen(user_dir_path)] = '\0';
             strncpy(path, user_dir_path, strlen(user_dir_path));
             strcat(path, "/");
@@ -534,38 +539,33 @@ int read_message(DIR *dir, char *user_dir_path, int message_number, int new_sock
             if((file = fopen(path, "r")) != NULL)
             {
                 int i = 1;
-                memset(buffer, 0, sizeof(buffer));
+                memset(temp_buffer, 0, sizeof(temp_buffer));
 
                 while(fgets(line, BUF, file) != NULL)
                 {
                     switch(i)
                     {
                         case SENDER:
-                            snprintf(buffer, BUF, "\nFROM: %s", line);
+                            snprintf(temp_buffer, BUF, "\nFROM: %s", line);
                             break;
                         case RECIPIENT:
-                            snprintf(buffer, BUF, "TO: %s", line);
+                            snprintf(temp_buffer, BUF, "TO: %s", line);
                             break;
                         case SUBJECT:
-                            snprintf(buffer, BUF, "SUBJECT: %s", line);
+                            snprintf(temp_buffer, BUF, "SUBJECT: %s", line);
                             break;
                         case CONTENT:
-                            snprintf(buffer, BUF, "CONTENT:\n%s", line);
+                            snprintf(temp_buffer, BUF, "CONTENT:\n%s", line);
                             break;
                         default:
-                            snprintf(buffer, BUF, "%s", line);
+                            snprintf(temp_buffer, BUF, "%s", line);
                             break;
                     }
-                    if(writen(new_socket, buffer, strlen(buffer)) < 0)
-                    {
-                        perror("send error");
-                        exit(EXIT_FAILURE);
-                    }
                     i++;
-                    usleep(1 * 1000);// wait 1 milisecond
+                    strncat(buffer, temp_buffer, strlen(temp_buffer));
                 }
                 fclose(file);
-                return EXIT_SUCCESS;
+                return buffer;
             }
         }
         else
@@ -575,15 +575,15 @@ int read_message(DIR *dir, char *user_dir_path, int message_number, int new_sock
     }
     if((current_message_number != message_number) || (dir_entry == NULL && message_number == 1))
     {
-        return EXIT_FAILURE;
+        return NULL;
     }
-    return EXIT_FAILURE;
+    return NULL;
 }
 
 int del_message(DIR *dir, char *user_dir_path, int message_number)
 {
     char buffer[BUF];
-    memset(&buffer, 0, sizeof(buffer));
+    memset(buffer, 0, sizeof(buffer));
     struct dirent *dir_entry = NULL;
     int current_message_number = 1;
 

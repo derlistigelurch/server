@@ -39,7 +39,6 @@ int main(int argc, char *argv[])
     char buffer[BUF];
     struct sockaddr_in address;
     int size;
-    int count;
     bool cancel = false;
 
     if(argc < 3)
@@ -169,8 +168,8 @@ int main(int argc, char *argv[])
                     fgets(buffer, BUF, stdin);
                     if (strlen(buffer) == 1) {
                         cancel = true;
-                    }               
-                                        
+                    }
+
                     if(writen(create_socket, buffer, strlen(buffer)) < 0)
                     {
                         perror("send error");
@@ -207,14 +206,13 @@ int main(int argc, char *argv[])
                 do
                 {
                     buffer[0] = '\0';
-                    count = 0;
-                    
+
                     fprintf(stdout, "Username: ");
                     fgets(buffer, BUF, stdin);
-                             
+
                     if (strlen(buffer) == 1) {
                         cancel = true;
-                    }               
+                    }
                     if(writen(create_socket, buffer, strlen(buffer)) < 0)
                     {
                         perror("send error");

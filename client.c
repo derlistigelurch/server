@@ -8,6 +8,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #define BUF 1024
 #define SENDER_ERROR 1
@@ -38,6 +39,8 @@ int main(int argc, char *argv[])
     char buffer[BUF];
     struct sockaddr_in address;
     int size;
+    int count;
+    bool cancel = false;
 
     if(argc < 3)
     {
@@ -57,6 +60,7 @@ int main(int argc, char *argv[])
 
     if(connect(create_socket, (struct sockaddr *) &address, sizeof(address)) == 0)
     {
+        system("clear");
         fprintf(stdout, "Connection with server (%s) established\n", inet_ntoa(address.sin_addr));
         size = recv(create_socket, buffer, BUF - 1, 0);
         if(size > 0)
@@ -72,8 +76,9 @@ int main(int argc, char *argv[])
     }
     do
     {
+        cancel = false;
         memset(buffer, 0, sizeof(buffer));
-        fprintf(stdout, "Command: ");
+        fprintf(stdout, "\n[send][list][read][del][quit]\nCommand: ");
         fgets(buffer, BUF, stdin);
 
         if(strncmp(to_lower(buffer), "send\n", 5) == 0)
@@ -138,7 +143,8 @@ int main(int argc, char *argv[])
                     {
                         if(strncmp(buffer, "OK\n", 3) == 0)
                         {
-                            fprintf(stdout, "Message sent!\n");
+                            system("clear");
+                            fprintf(stdout, "\nMessage sent!\n\n");
                         }
                         else
                         {
@@ -161,6 +167,10 @@ int main(int argc, char *argv[])
                 {
                     fprintf(stdout, "Username: ");
                     fgets(buffer, BUF, stdin);
+                    if (strlen(buffer) == 1) {
+                        cancel = true;
+                    }               
+                                        
                     if(writen(create_socket, buffer, strlen(buffer)) < 0)
                     {
                         perror("send error");
@@ -169,6 +179,9 @@ int main(int argc, char *argv[])
                     memset(buffer, 0, sizeof(buffer));
                 }
                 while(list_error_check() != 0);
+                if (cancel) {
+                    continue;
+                }
                 if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
                 {
                     if(strncmp(buffer, "ERR\n", 4) == 0)
@@ -193,8 +206,15 @@ int main(int argc, char *argv[])
             {
                 do
                 {
+                    buffer[0] = '\0';
+                    count = 0;
+                    
                     fprintf(stdout, "Username: ");
                     fgets(buffer, BUF, stdin);
+                             
+                    if (strlen(buffer) == 1) {
+                        cancel = true;
+                    }               
                     if(writen(create_socket, buffer, strlen(buffer)) < 0)
                     {
                         perror("send error");
@@ -203,6 +223,9 @@ int main(int argc, char *argv[])
                     memset(buffer, 0, sizeof(buffer));
                 }
                 while(read_del_error_check(USERNAME_ERROR) != 0);
+                if (cancel) {
+                    continue;
+                }
                 if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
                 {
                     do
@@ -219,6 +242,7 @@ int main(int argc, char *argv[])
                     while(read_del_error_check(MAIL_NOT_FOUND_ERROR) != 0);
                     if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
                     {
+                        buffer[strlen(buffer)-2] = '\0';
                         fprintf(stdout, "%s", buffer);
                     }
                 }
@@ -265,7 +289,8 @@ int main(int argc, char *argv[])
                     while(read_del_error_check(MAIL_NOT_FOUND_ERROR) != 0);
                     if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
                     {
-                        fprintf(stdout, "Message deleted!\n");
+                        system("clear");
+                        fprintf(stdout, " \nMessage deleted!\n\n");
                     }
                     else
                     {
@@ -302,13 +327,13 @@ int send_error_check(int error_code)
         switch(error_code)
         {
             case SENDER_ERROR:
-                fprintf(stderr, "ERROR! The SENDER must not have more than 8 characters!\n");
+                fprintf(stderr, "ERROR! The SENDER must be between 1 and 8 characters long!\n");
                 return EXIT_FAILURE;
             case RECIPIENT_ERROR:
-                fprintf(stderr, "ERROR! The RECIPIENT must not have more than 8 characters!\n");
+                fprintf(stderr, "ERROR! The RECIPIENT must be between 1 and 8 characters long!\n");
                 return EXIT_FAILURE;
             case SUBJECT_ERROR:
-                fprintf(stderr, "ERROR! The SUBJECT must not have more than 80 characters!\n");
+                fprintf(stderr, "ERROR! The SUBJECT be between 1 and 80 characters long!\n");
                 return EXIT_FAILURE;
             default:
                 fprintf(stderr, "Something went terribly wrong!\n");

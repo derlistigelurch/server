@@ -263,6 +263,7 @@ int main(int argc, char *argv[])
                         if (buffer[0] == '.' || buffer[0] == '/')
                         {
                             send_err(new_socket);
+							dir = NULL;
                             continue;
                         }
                         if (strlen(buffer) == 1)
@@ -312,6 +313,7 @@ int main(int argc, char *argv[])
                         if (buffer[0] == '.' || buffer[0] == '/')
                         {
                             send_err(new_socket);
+							dir = NULL;
                             continue;
                         }
                         if (strlen(buffer) == 1)

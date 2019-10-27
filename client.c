@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
     char buffer[BUF];
     struct sockaddr_in address;
     int size;
-    bool cancel = false;
+    bool loggedIn = false;
 
     if(argc < 3)
     {
@@ -75,12 +75,32 @@ int main(int argc, char *argv[])
     }
     do
     {
-        cancel = false;
         memset(buffer, 0, sizeof(buffer));
-        fprintf(stdout, "\n[send][list][read][del][quit]\nCommand: ");
-        fgets(buffer, BUF, stdin);
+        if (loggedIn){
+            fprintf(stdout, "\n[send][list][read][del][quit]\nCommand: ");
+        }else {
+            fprintf(stdout, "\n[login][quit]\nCommand: ");
 
-        if(strncmp(to_lower(buffer), "send\n", 5) == 0)
+        }
+
+        fgets(buffer, BUF, stdin);
+        if(strncmp(to_lower(buffer), "login\n", 5) == 0){                                                        //LOGIN
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            if (check_receive(recv(create_socket, buffer, BUF, 0)) == 0) {
+                if(strncmp(buffer, "OK\n", 3) == 0)
+                {
+                    loggedIn = true;
+                    printf("Login success! \n");
+                }else {
+                    printf("Login failed! \n");
+                }
+            }
+        }
+        else if(strncmp(to_lower(buffer), "send\n", 5) == 0 && loggedIn)                                          //SEND
         {
             if(writen(create_socket, buffer, strlen(buffer)) < 0)
             {
@@ -91,18 +111,6 @@ int main(int argc, char *argv[])
             {
                 if(strncmp(buffer, "OK\n", 3) == 0)
                 {
-                    do
-                    {
-                        fprintf(stdout, "Sender: ");
-                        fgets(buffer, BUF, stdin);
-                        if(writen(create_socket, buffer, strlen(buffer)) < 0)
-                        {
-                            perror("send error");
-                            exit(EXIT_FAILURE);
-                        }
-                        memset(buffer, 0, sizeof(buffer));
-                    }
-                    while(send_error_check(SENDER_ERROR) != 0);
                     do
                     {
                         fprintf(stdout, "Recipient: ");
@@ -153,7 +161,7 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        else if(strncmp(to_lower(buffer), "list\n", 5) == 0)
+        else if(strncmp(to_lower(buffer), "list\n", 5) == 0 && loggedIn)                                         //LIST
         {
             if(writen(create_socket, buffer, strlen(buffer)) < 0)
             {
@@ -162,25 +170,6 @@ int main(int argc, char *argv[])
             }
             if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
             {
-                do
-                {
-                    fprintf(stdout, "Username: ");
-                    fgets(buffer, BUF, stdin);
-                    if (strlen(buffer) == 1) {
-                        cancel = true;
-                    }
-
-                    if(writen(create_socket, buffer, strlen(buffer)) < 0)
-                    {
-                        perror("send error");
-                        exit(EXIT_FAILURE);
-                    }
-                    memset(buffer, 0, sizeof(buffer));
-                }
-                while(list_error_check() != 0);
-                if (cancel) {
-                    continue;
-                }
                 if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
                 {
                     if(strncmp(buffer, "ERR\n", 4) == 0)
@@ -194,7 +183,7 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        else if(strncmp(to_lower(buffer), "read\n", 5) == 0)
+        else if(strncmp(to_lower(buffer), "read\n", 5) == 0 && loggedIn)                                        //READ
         {
             if(writen(create_socket, buffer, strlen(buffer)) < 0)
             {
@@ -203,27 +192,6 @@ int main(int argc, char *argv[])
             }
             if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
             {
-                do
-                {
-                    buffer[0] = '\0';
-
-                    fprintf(stdout, "Username: ");
-                    fgets(buffer, BUF, stdin);
-
-                    if (strlen(buffer) == 1) {
-                        cancel = true;
-                    }
-                    if(writen(create_socket, buffer, strlen(buffer)) < 0)
-                    {
-                        perror("send error");
-                        exit(EXIT_FAILURE);
-                    }
-                    memset(buffer, 0, sizeof(buffer));
-                }
-                while(read_del_error_check(USERNAME_ERROR) != 0);
-                if (cancel) {
-                    continue;
-                }
                 if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
                 {
                     do
@@ -242,6 +210,8 @@ int main(int argc, char *argv[])
                     {
                         buffer[strlen(buffer)-2] = '\0';
                         fprintf(stdout, "%s", buffer);
+                    } else {
+                        fprintf(stderr, "ERROR! Unable to read message!\n");
                     }
                 }
                 else
@@ -250,7 +220,7 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        else if(strncmp(to_lower(buffer), "del\n", 4) == 0)
+        else if(strncmp(to_lower(buffer), "del\n", 4) == 0 && loggedIn)                                         //DEL
         {
             if(writen(create_socket, buffer, strlen(buffer)) < 0)
             {
@@ -259,18 +229,7 @@ int main(int argc, char *argv[])
             }
             if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
             {
-                do
-                {
-                    fprintf(stdout, "Username: ");
-                    fgets(buffer, BUF, stdin);
-                    if(writen(create_socket, buffer, strlen(buffer)) < 0)
-                    {
-                        perror("send error");
-                        exit(EXIT_FAILURE);
-                    }
-                    memset(buffer, 0, sizeof(buffer));
-                }
-                while(read_del_error_check(USERNAME_ERROR) != 0);
+
                 if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0 && strncmp(buffer, "OK\n", 3) == 0)
                 {
                     do

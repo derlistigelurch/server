@@ -83,7 +83,8 @@ int main(int argc, char *argv[])
     DIR *dir = NULL;
     int new_socket = 0;
     char mail_dir_path[PATH_MAX];
-    char loggedInUser[9] = "if18b114\0";
+    char loggedInUser[9] = "";
+    char pw[30] = "";
     char *user_dir_path = NULL;
     strncpy(mail_dir_path, argv[2], strlen(argv[2]));
     int value = 1;
@@ -152,7 +153,23 @@ int main(int argc, char *argv[])
             {
                 fprintf(stdout, "Received command: %s", buffer);
                 if(strncmp("login\n", to_lower(buffer), 6) == 0 || strncmp("login\r", to_lower(buffer), 6) == 0){
-                    if (ldapLogin("if18b114", "123") == 0){
+                    //TODO: HIER!
+                    if((size = check_receive(readline(new_socket, buffer, BUF))) == 0){
+                        if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0) {
+                            send_err(new_socket);
+                            break;
+                        }
+                        sprintf(loggedInUser, "%s", buffer);
+                        memset(buffer, 0, sizeof(buffer));
+                    }
+                    if((size = check_receive(readline(new_socket, buffer, BUF))) == 0){
+                        if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0) {
+                            send_err(new_socket);
+                            break;
+                        }
+                        sprintf(pw, "%s", buffer);
+                    }
+                    if (ldapLogin(loggedInUser, pw) == 0){
                         printf("login success\n");
                         loggedIn = true;
                         send_ok(new_socket);
@@ -172,16 +189,16 @@ int main(int argc, char *argv[])
                     {
                         if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
                         {
-                            strncpy(message.sender, loggedInUser, 8);
+                            strncpy(message.sender, loggedInUser, 9);
                             switch(i)
                             {
                                 case RECIPIENT:
-                                    if(strlen(del_new_line(buffer)) > MAX_RECIPIENT_SIZE || strlen(del_new_line(buffer)) == 0)
-                                    {
+                                    if(strlen(del_new_line(buffer)) > MAX_RECIPIENT_SIZE || strlen(del_new_line(buffer)) == 0) {
                                         send_err(new_socket);
                                         break;
                                     }
-                                    strncpy(message.recipient, buffer, 8);
+                                    //snprintf(filePath,filePathSize,"%s%s%c",path.c_str(),s.c_str(),'\0');
+                                    sprintf(message.recipient, "%s\0", buffer);
                                     send_ok(new_socket);
                                     i++;
                                     break;
@@ -219,7 +236,7 @@ int main(int argc, char *argv[])
                         snprintf(buffer, BUF, "%ld_%s", current_time, message.sender);
                         strncat(user_dir_path, buffer, strlen(buffer));
 
-                        if((file = fopen(del_new_line(user_dir_path), "w")) == NULL)
+                        if((file = fopen(user_dir_path, "w")) == NULL)
                         {
                             send_err(new_socket);
                         }

@@ -7,24 +7,18 @@
 #define LDAP_URI "ldap://ldap.technikum-wien.at:389"
 #define SEARCHBASE "ou=People,dc=technikum-wien,dc=at" // achtung was wenn sich struktur ändert;nicht ideal
 #define SCOPE LDAP_SCOPE_SUBTREE
-//#define FILTER "(uid=if18b114)" //ev präfixnotation und oder verknüfung; filter erweiterbar; !!für bsp eigentl kein filter notwendig
-//uid=if18b114,ou=People,dc=technikum-wien,dc=at
 
+//TODO: TimeOut, PW verbergen, Warning server
 
 int anonymUserSearch(char *username){
     LDAP *ld;			/* LDAP resource handle */
     LDAPMessage *result;	/* LDAP result handle; gesamtes ergebnis der suche */
-    //LDAPMessage *e;
-    //BerElement *ber;		/* array of attributes */
-    //char *attribute;
-    //BerValue **vals;//achtung struct -> struktur ldap checken (auch intern d pw so gespeichert)
 
     BerValue *servercredp; //siehe oben def
     BerValue cred;
     cred.bv_val = "";
     cred.bv_len = 0;
     int rc=0;
-    // int i;
     char filter[40] = "";
     int resultCount = 0;
 
@@ -72,7 +66,7 @@ int anonymUserSearch(char *username){
 
     sprintf(filter, "(uid=%s)", username);
     /* perform ldap search */
-    printf("filter: %s\n", filter);
+    //printf("filter: %s\n", filter);
     rc = ldap_search_ext_s(ld, SEARCHBASE, SCOPE, filter, (char **)attribs, 0, NULL, NULL, NULL, 500, &result);
 
     if (rc != LDAP_SUCCESS)
@@ -83,34 +77,8 @@ int anonymUserSearch(char *username){
     }
 
     resultCount = ldap_count_entries(ld, result);
-    printf("Total results: %d\n", resultCount);
+    //printf("Total results: %d\n", resultCount);
 
-    /*for (e = ldap_first_entry(ld, result); e != NULL; e = ldap_next_entry(ld,e))
-    {
-        printf("DN: %s\n", ldap_get_dn(ld,e));
-
-        // Now print the attributes and values of each found entry
-
-        for (attribute = ldap_first_attribute(ld,e,&ber); attribute!=NULL; attribute = ldap_next_attribute(ld,e,ber))
-        {
-            if ((vals = ldap_get_values_len(ld,e,attribute)) != NULL)
-            {
-                for (i=0;i < ldap_count_values_len(vals);i++)
-                {
-                    printf("\t%s: %s\n",attribute,vals[i]->bv_val);
-                }
-                ldap_value_free_len(vals);
-            }
-            // free memory used to store the attribute
-            ldap_memfree(attribute);
-        }
-        // free memory used to store the value structure
-        if (ber != NULL) ber_free(ber,0);
-
-        printf("\n");
-    }*/
-
-    /* free memory used for result */
     ldap_msgfree(result);
     printf("LDAP search succeeded\n");
 
@@ -122,17 +90,73 @@ int anonymUserSearch(char *username){
     }
 
 }
+
 int passwordCheck(char *username, char *password){
+    //printf("Passwort: %s\n", password);
+    LDAP *ld;			/* LDAP resource handle */
+    BerValue *servercredp; //siehe oben def
+    BerValue cred;
+    cred.bv_val = password;
+    cred.bv_len = strlen(password);
+    int rc=0;
+
+    char filter[40] = "";
+
+    int ldapversion = LDAP_VERSION3;//bei 2 keine verschlüsselung; korrekte initialisierung wichtig!
+
+    /* 1. schritt connection aufbauen;setup LDAP connection */
+    if (ldap_initialize(&ld,LDAP_URI) != LDAP_SUCCESS) //hat geklappt
+    {
+        fprintf(stderr,"ldap_init failed"); //sonst err
+        return EXIT_FAILURE;
+    }
+
+    //printf("connected to LDAP server %s\n",LDAP_URI);
+
+    if ((rc = ldap_set_option(ld, LDAP_OPT_PROTOCOL_VERSION, &ldapversion)) != LDAP_SUCCESS) //protokoll versionsnr muss stimmen sonst
+    {
+        fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
+        ldap_unbind_ext_s(ld, NULL, NULL); //wieder raus
+        return EXIT_FAILURE;
+    }
+
+    //man pages checken für parameter, rückgabewerte
+    if ((rc = ldap_start_tls_s(ld, NULL, NULL)) != LDAP_SUCCESS)
+    {
+        fprintf(stderr, "ldap_start_tls_s(): %s\n", ldap_err2string(rc));
+        ldap_unbind_ext_s(ld, NULL, NULL);
+        return EXIT_FAILURE;
+    }
+
+    /* user bind */
+    char binduser [60] = "";
+    sprintf(binduser, "uid=%s,ou=People,dc=technikum-wien,dc=at", username);
+    //printf("binduser: %s\n", binduser);
+    //printf("size of pw: %ld\n", cred.bv_len);
+    //printf("cred: %s\n", cred);
+    rc = ldap_sasl_bind_s(ld,binduser,LDAP_SASL_SIMPLE,&cred,NULL,NULL,&servercredp);
+
+    if (rc != LDAP_SUCCESS)
+    {
+        fprintf(stderr,"LDAP bind error: %s\n",ldap_err2string(rc));
+        ldap_unbind_ext_s(ld, NULL, NULL);
+        return EXIT_FAILURE;
+    }
+    else
+    {
+        printf("bind successful\n");
+    }
+
+    sprintf(filter, "(uid=%s)", username);
+    ldap_unbind_ext_s(ld, NULL, NULL);
     return EXIT_SUCCESS;
-
-
 }
 
 int ldapLogin(char *username, char *password)
 {
     int status = 0;
     status = anonymUserSearch(username);
-    printf("status anonym: %d\n", status);
+    //printf("status anonym: %d\n", status);
     if (status != 0){
         return status;
     }

@@ -90,6 +90,22 @@ int main(int argc, char *argv[])
                 perror("send error");
                 exit(EXIT_FAILURE);
             }
+            fprintf(stdout, "Username: ");
+            fgets(buffer, BUF, stdin);
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            memset(buffer, 0, sizeof(buffer));
+            fprintf(stdout, "Passwort: ");
+            fgets(buffer, BUF, stdin);
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            memset(buffer, 0, sizeof(buffer));
             if (check_receive(recv(create_socket, buffer, BUF, 0)) == 0) {
                 if(strncmp(buffer, "OK\n", 3) == 0)
                 {

@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <termios.h>
 
 #define BUF 1024
 #define SENDER_ERROR 1
@@ -34,12 +35,14 @@ int list_error_check();
 
 int read_del_error_check(int error_code);
 
+
 int main(int argc, char *argv[])
 {
     char buffer[BUF];
     struct sockaddr_in address;
     int size;
     bool loggedIn = false;
+    struct termios term, term_orig;
 
     if(argc < 3)
     {
@@ -56,6 +59,8 @@ int main(int argc, char *argv[])
     address.sin_family = AF_INET;
     address.sin_port = htons(strtol(argv[2], NULL, 10));
     inet_aton(argv[1], &address.sin_addr);
+
+
 
     if(connect(create_socket, (struct sockaddr *) &address, sizeof(address)) == 0)
     {
@@ -99,7 +104,16 @@ int main(int argc, char *argv[])
             }
             memset(buffer, 0, sizeof(buffer));
             fprintf(stdout, "Passwort: ");
+            tcgetattr(STDIN_FILENO, &term);
+            term_orig = term;
+            term.c_lflag &= ~ECHO;
+            tcsetattr(STDIN_FILENO, TCSANOW, &term);
             fgets(buffer, BUF, stdin);
+            //printf("Passwort: %s\n", buffer);
+
+            //Echo wieder an; sonst keine ausgabe
+            tcsetattr(STDIN_FILENO, TCSANOW, &term_orig);
+
             if(writen(create_socket, buffer, strlen(buffer)) < 0)
             {
                 perror("send error");

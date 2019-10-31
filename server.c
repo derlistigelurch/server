@@ -139,6 +139,13 @@ int main(int argc, char *argv[])
         {
             fprintf(stdout, "Client connected from %s:%d...\n", inet_ntoa(client_address.sin_addr),
                     ntohs(client_address.sin_port));
+            //TODO HIER
+            //IP ADRESSE SPEICHERN
+            struct sockaddr_in* pV4Address = (struct sockaddr_in*)&client_address;
+            struct in_addr ipAddress = pV4Address->sin_addr;
+            //TEST AUSGABE
+            char str[INET_ADDRSTRLEN];
+            printf("TEST: IP address: %s\n", inet_ntop(AF_INET, &ipAddress, str, INET_ADDRSTRLEN ));
             strcpy(buffer,
                    "Welcome to the server\n\n\0");// Please enter your command:\nSEND\nLIST\nREAD\nDEL\nQUIT\n\0");
             if(writen(new_socket, buffer, strlen(buffer) + 1) < 0)
@@ -170,12 +177,12 @@ int main(int argc, char *argv[])
                         sprintf(pw, "%s", buffer);
                     }
                     if (ldapLogin(loggedInUser, pw) == 0){
-                        printf("login success\n");
+                        printf("\nlogin success\n");
                         loggedIn = true;
                         send_ok(new_socket);
                     }
                     else {
-                        printf("login error\n");
+                        printf("\nlogin error\n");
                         send_err(new_socket);
                     }
                 }
@@ -198,7 +205,7 @@ int main(int argc, char *argv[])
                                         break;
                                     }
                                     //snprintf(filePath,filePathSize,"%s%s%c",path.c_str(),s.c_str(),'\0');
-                                    sprintf(message.recipient, "%s\0", buffer);
+                                    sprintf(message.recipient, "%s%c", buffer, '\0');
                                     send_ok(new_socket);
                                     i++;
                                     break;

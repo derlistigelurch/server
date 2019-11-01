@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
     {
         memset(buffer, 0, sizeof(buffer));
         if (loggedIn){
-            fprintf(stdout, "\n[send][list][read][del][quit]\nCommand: ");
+            fprintf(stdout, "\n[send][list][read][del][logout][quit]\nCommand: ");
         }else {
             fprintf(stdout, "\n[login][quit]\nCommand: ");
 
@@ -94,6 +94,13 @@ int main(int argc, char *argv[])
             {
                 perror("send error");
                 exit(EXIT_FAILURE);
+            }
+            if (check_receive(recv(create_socket, buffer, BUF, 0)) == 0) {
+                if(strncmp(buffer, "ERR\n", 4) == 0){
+                    //system("clear");
+                    fprintf(stdout, "\n You are blocked for the time being!\n");
+                    continue;
+                }
             }
             fprintf(stdout, "Username: ");
             fgets(buffer, BUF, stdin);
@@ -124,9 +131,25 @@ int main(int argc, char *argv[])
                 if(strncmp(buffer, "OK\n", 3) == 0)
                 {
                     loggedIn = true;
-                    printf("Login success! \n");
+                    system("clear");
+                    printf("\nLogin success! \n");
                 }else {
-                    printf("Login failed! \n");
+                    printf("\nLogin failed! \n");
+                }
+            }
+        }
+        else if(strncmp(to_lower(buffer), "logout\n", 7) == 0 && loggedIn){
+            if(writen(create_socket, buffer, strlen(buffer)) < 0)
+            {
+                perror("send error");
+                exit(EXIT_FAILURE);
+            }
+            if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
+            {
+                if(strncmp(buffer, "OK\n", 3) == 0){
+                    loggedIn = false;
+                }else {
+                    fprintf(stdout, "Please try again!\n");
                 }
             }
         }

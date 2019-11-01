@@ -86,11 +86,19 @@ int main(int argc, char *argv[])
     char loggedInUser[9] = "";
     char pw[30] = "";
     char *user_dir_path = NULL;
+    char *user_ip_dir_path = NULL;
+    char checkip[30] = "";
     strncpy(mail_dir_path, argv[2], strlen(argv[2]));
     int value = 1;
     bool loggedIn = false;
     // create mail spool directory
     if(mkdir(mail_dir_path, 0777) && errno != EEXIST) // do nothing if directory already exists
+    {
+        perror("mkdir error: ");// error while creating a directory
+        exit(EXIT_FAILURE);
+    }
+    //ip blacklist dir
+    if(mkdir("IP_Blacklist", 0777) && errno != EEXIST) // do nothing if directory already exists
     {
         perror("mkdir error: ");// error while creating a directory
         exit(EXIT_FAILURE);
@@ -102,6 +110,8 @@ int main(int argc, char *argv[])
     int size = 0;
     struct sockaddr_in address;
     struct sockaddr_in client_address;
+    char ip_user[INET_ADDRSTRLEN];
+    int checktime = 0;
 
     if((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
@@ -139,13 +149,14 @@ int main(int argc, char *argv[])
         {
             fprintf(stdout, "Client connected from %s:%d...\n", inet_ntoa(client_address.sin_addr),
                     ntohs(client_address.sin_port));
-            //TODO HIER
             //IP ADRESSE SPEICHERN
             struct sockaddr_in* pV4Address = (struct sockaddr_in*)&client_address;
             struct in_addr ipAddress = pV4Address->sin_addr;
+            inet_ntop(AF_INET, &ipAddress, ip_user, INET_ADDRSTRLEN );
+            //für späteres login
+            user_ip_dir_path = get_user_dir_path("IP_Blacklist", ip_user);
             //TEST AUSGABE
-            char str[INET_ADDRSTRLEN];
-            printf("TEST: IP address: %s\n", inet_ntop(AF_INET, &ipAddress, str, INET_ADDRSTRLEN ));
+            //printf("TEST: IP address: %s\n", ip_user);
             strcpy(buffer,
                    "Welcome to the server\n\n\0");// Please enter your command:\nSEND\nLIST\nREAD\nDEL\nQUIT\n\0");
             if(writen(new_socket, buffer, strlen(buffer) + 1) < 0)
@@ -160,7 +171,33 @@ int main(int argc, char *argv[])
             {
                 fprintf(stdout, "Received command: %s", buffer);
                 if(strncmp("login\n", to_lower(buffer), 6) == 0 || strncmp("login\r", to_lower(buffer), 6) == 0){
-                    //TODO: HIER!
+                    if(access(user_ip_dir_path, F_OK ) != -1 ) {
+                        // es gibt schon ein file; dann nachschauen ob schon 3ter versuch
+                        file = fopen(user_ip_dir_path, "r");
+                        if(file == NULL) {
+                            printf("Da hats was\n");
+                        }else {
+                            if (fgetc(file) == '3'){ //wenn schon drei mal falsch
+                                fgetc(file);
+                                fgets(checkip, 30, file);
+                                checktime = atoi(checkip);
+                                checktime -= time(NULL);
+                                if (checktime < -15){  //wenn genügend zeit vergangen, wieder login zulassen
+                                    remove(user_ip_dir_path);
+                                }
+                                else {
+                                    printf("Time passed since Blockage: %d\n", checktime);
+                                    send_err(new_socket);
+                                    continue;
+                                }
+
+                            }
+                            fclose(file);
+                        }
+                        send_ok(new_socket);
+                    }else{
+                        send_ok(new_socket);
+                    }
                     if((size = check_receive(readline(new_socket, buffer, BUF))) == 0){
                         if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0) {
                             send_err(new_socket);
@@ -177,16 +214,39 @@ int main(int argc, char *argv[])
                         sprintf(pw, "%s", buffer);
                     }
                     if (ldapLogin(loggedInUser, pw) == 0){
-                        printf("\nlogin success\n");
+                        printf("login success\n");
                         loggedIn = true;
+                        remove(user_ip_dir_path);
                         send_ok(new_socket);
                     }
                     else {
-                        printf("\nlogin error\n");
+                        if ((file = fopen(user_ip_dir_path, "r")) != NULL) {
+                            checkip[0] = fgetc(file);
+                            fclose(file);
+                        }else checkip[0] = '0';
+                        if ((file = fopen(user_ip_dir_path, "w")) != NULL)
+                        switch (checkip[0]){
+                            case '0': fprintf(file, "1:%ld\n", time(NULL)); break;
+                            case '1': fprintf(file, "2:%ld\n", time(NULL)); break;
+                            case '2': {
+                                fprintf(file, "3:%ld\n", time(NULL));
+                                //ev Warnung ausgeben
+                                break;
+                            }
+                            default: fprintf(file, "3:%ld\n", time(NULL)); break;
+                        }
+                        fclose(file);
+                        printf("login error\n");
                         send_err(new_socket);
                     }
                 }
-                if((strncmp("send\n", to_lower(buffer), 5) == 0 || strncmp("send\r", to_lower(buffer), 5) == 0) && loggedIn)
+                else if((strncmp("logout\n", to_lower(buffer), 7) == 0 || strncmp("logout\r", to_lower(buffer), 7) == 0) && loggedIn){
+                    loggedIn = false;
+                    memset(loggedInUser, 0, sizeof(loggedInUser));
+                    memset(pw, 0, sizeof(pw));
+                    send_ok(new_socket);
+                }
+                else if((strncmp("send\n", to_lower(buffer), 5) == 0 || strncmp("send\r", to_lower(buffer), 5) == 0) && loggedIn)
                 {
                     struct Message message;
                     int i = 2;

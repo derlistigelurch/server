@@ -8,7 +8,7 @@
 #define SEARCHBASE "ou=People,dc=technikum-wien,dc=at" // achtung was wenn sich struktur ändert;nicht ideal
 #define SCOPE LDAP_SCOPE_SUBTREE
 
-//TODO: TimeOut, PW verbergen, Warning server
+//TODO: Threads, ev list durch read/del triggern?
 
 int anonymUserSearch(char *username){
     LDAP *ld;			/* LDAP resource handle */

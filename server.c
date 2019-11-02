@@ -13,6 +13,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <pthread.h>
 #include "myldap.h"
 
 #define BUF 1024
@@ -32,12 +33,10 @@ struct Message
 };
 
 int create_socket;
+pthread_mutex_t mutexMail;
+pthread_mutex_t mutexIp;
 
-void sigquit_handler();
-
-void sigint_handler();
-
-void sighup_handler();
+void sig_handler();
 
 void print_usage();
 
@@ -67,30 +66,32 @@ char *read_message(DIR *dir, char *user_dir_path, int message_number);
 
 char *list_messages(DIR *dir, char *user_dir_path);
 
+struct threadParameter {
+    int socket;
+    struct sockaddr_in client_address;
+    char *mail_dir_path;
+};
+
+void *serverFunction(void *parameter);
+
+
+
 int main(int argc, char *argv[])
 {
-    (void) signal(SIGHUP, sighup_handler);
-    (void) signal(SIGQUIT, sigquit_handler);
-    (void) signal(SIGINT, sigint_handler);
+    (void) signal(SIGHUP, sig_handler);
+    (void) signal(SIGQUIT, sig_handler);
+    (void) signal(SIGINT, sig_handler);
 
     if(argc != 3)
     {
         print_usage();
     }
 
-    time_t current_time;
-    FILE *file = NULL;
-    DIR *dir = NULL;
+    pthread_t tid;
     int new_socket = 0;
     char mail_dir_path[PATH_MAX];
-    char loggedInUser[9] = "";
-    char pw[30] = "";
-    char *user_dir_path = NULL;
-    char *user_ip_dir_path = NULL;
-    char checkip[30] = "";
     strncpy(mail_dir_path, argv[2], strlen(argv[2]));
     int value = 1;
-    bool loggedIn = false;
     // create mail spool directory
     if(mkdir(mail_dir_path, 0777) && errno != EEXIST) // do nothing if directory already exists
     {
@@ -106,12 +107,8 @@ int main(int argc, char *argv[])
 
     
     socklen_t address_length;
-    char buffer[BUF];
-    int size = 0;
     struct sockaddr_in address;
     struct sockaddr_in client_address;
-    char ip_user[INET_ADDRSTRLEN];
-    int checktime = 0;
 
     if((create_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
@@ -141,6 +138,9 @@ int main(int argc, char *argv[])
     listen(create_socket, 5);
     address_length = sizeof(struct sockaddr_in);
 
+    // pthread_mutex_init
+    pthread_mutex_init (&mutexMail, NULL);
+    pthread_mutex_init (&mutexIp, NULL);
     while(1)
     {
         new_socket = accept(create_socket, (struct sockaddr *) &client_address, &address_length);
@@ -149,82 +149,125 @@ int main(int argc, char *argv[])
         {
             fprintf(stdout, "Client connected from %s:%d...\n", inet_ntoa(client_address.sin_addr),
                     ntohs(client_address.sin_port));
-            //IP ADRESSE SPEICHERN
-            struct sockaddr_in* pV4Address = (struct sockaddr_in*)&client_address;
-            struct in_addr ipAddress = pV4Address->sin_addr;
-            inet_ntop(AF_INET, &ipAddress, ip_user, INET_ADDRSTRLEN );
-            //für späteres login
-            user_ip_dir_path = get_user_dir_path("IP_Blacklist", ip_user);
-            //TEST AUSGABE
-            //printf("TEST: IP address: %s\n", ip_user);
-            strcpy(buffer,
-                   "Welcome to the server\n\n\0");// Please enter your command:\nSEND\nLIST\nREAD\nDEL\nQUIT\n\0");
-            if(writen(new_socket, buffer, strlen(buffer) + 1) < 0)
-            {
-                perror("send error");
-                exit(EXIT_FAILURE);
+
+            struct threadParameter parameter;
+            parameter.socket = new_socket;
+            parameter.client_address = client_address;
+            parameter.mail_dir_path = mail_dir_path;
+
+            if( pthread_create(&tid, NULL, serverFunction, &parameter) != 0 ) {
+                printf("Failed to create thread\n");
             }
         }
-        do
-        {
-            if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
-            {
-                fprintf(stdout, "Received command: %s", buffer);
-                if(strncmp("login\n", to_lower(buffer), 6) == 0 || strncmp("login\r", to_lower(buffer), 6) == 0){
-                    if(access(user_ip_dir_path, F_OK ) != -1 ) {
-                        // es gibt schon ein file; dann nachschauen ob schon 3ter versuch
-                        file = fopen(user_ip_dir_path, "r");
-                        if(file == NULL) {
-                            printf("Da hats was\n");
-                        }else {
-                            if (fgetc(file) == '3'){ //wenn schon drei mal falsch
-                                fgetc(file);
-                                fgets(checkip, 30, file);
-                                checktime = atoi(checkip);
-                                checktime -= time(NULL);
-                                if (checktime < -15){  //wenn genügend zeit vergangen, wieder login zulassen
-                                    remove(user_ip_dir_path);
-                                }
-                                else {
-                                    printf("Time passed since Blockage: %d\n", checktime);
-                                    send_err(new_socket);
-                                    continue;
-                                }
+    }
+}
 
+void *serverFunction(void *parameter) {
+    int new_socket = ((struct threadParameter *) parameter)->socket;
+    struct sockaddr_in client_address = ((struct threadParameter *) parameter)->client_address;
+    char *mail_dir_path = ((struct threadParameter *) parameter)->mail_dir_path;
+
+    int checktime = 0;
+    char buffer[BUF];
+    int size = 0;
+    char ip_user[INET_ADDRSTRLEN];
+    bool loggedIn = false;
+    char loggedInUser[9] = "";
+    char pw[30] = "";
+    char *user_dir_path = NULL;
+    char *user_ip_dir_path = NULL;
+    char checkip[30] = "";
+    time_t current_time;
+    FILE *file = NULL;
+    DIR *dir = NULL;
+
+    //IP ADRESSE SPEICHERN
+    struct sockaddr_in* pV4Address = (struct sockaddr_in*)&client_address;
+    struct in_addr ipAddress = pV4Address->sin_addr;
+    inet_ntop(AF_INET, &ipAddress, ip_user, INET_ADDRSTRLEN );
+    //für späteres login
+    user_ip_dir_path = get_user_dir_path("IP_Blacklist", ip_user);
+    //TEST AUSGABE
+    //printf("TEST: IP address: %s\n", ip_user);
+
+    pthread_t tid;
+    tid = pthread_self();
+
+    strcpy(buffer,
+           "Welcome to the server\n\n\0");// Please enter your command:\nSEND\nLIST\nREAD\nDEL\nQUIT\n\0");
+    if(writen(new_socket, buffer, strlen(buffer) + 1) < 0)
+    {
+        perror("send error");
+        pthread_exit(NULL);
+    }
+
+    do
+    {
+        if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
+        {
+            fprintf(stdout, "[%ld]: Received command: %s", tid, buffer);
+            if(strncmp("login\n", to_lower(buffer), 6) == 0 || strncmp("login\r", to_lower(buffer), 6) == 0){
+                pthread_mutex_lock (&mutexIp);
+                //sleep(10);
+                if(access(user_ip_dir_path, F_OK ) != -1 ) {
+                    // es gibt schon ein file; dann nachschauen ob schon 3ter versuch
+                    file = fopen(user_ip_dir_path, "r");
+                    if(file == NULL) {
+                        //printf("Da hats was\n");
+                    }else {
+                        if (fgetc(file) == '3'){ //wenn schon drei mal falsch
+                            fgetc(file);
+                            fgets(checkip, 30, file);
+                            checktime = atoi(checkip);
+                            checktime -= time(NULL);
+                            if (checktime < -15){  //wenn genügend zeit vergangen, wieder login zulassen
+                                remove(user_ip_dir_path);
                             }
-                            fclose(file);
+                            else {
+                                //printf("[%d]: Time passed since Blockage: %d\n", tid, checktime);
+                                send_err(new_socket);
+                                pthread_mutex_unlock (&mutexIp);
+                                continue;
+                            }
+
                         }
-                        send_ok(new_socket);
-                    }else{
-                        send_ok(new_socket);
+                        fclose(file);
                     }
-                    if((size = check_receive(readline(new_socket, buffer, BUF))) == 0){
-                        if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0) {
-                            send_err(new_socket);
-                            break;
-                        }
-                        sprintf(loggedInUser, "%s", buffer);
-                        memset(buffer, 0, sizeof(buffer));
+                    send_ok(new_socket);
+                }else{
+                    send_ok(new_socket);
+                }
+                pthread_mutex_unlock (&mutexIp);
+                if((size = check_receive(readline(new_socket, buffer, BUF))) == 0){
+                    if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0) {
+                        send_err(new_socket);
+                        break;
                     }
-                    if((size = check_receive(readline(new_socket, buffer, BUF))) == 0){
-                        if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0) {
-                            send_err(new_socket);
-                            break;
-                        }
-                        sprintf(pw, "%s", buffer);
+                    sprintf(loggedInUser, "%s", buffer);
+                    memset(buffer, 0, sizeof(buffer));
+                }
+                if((size = check_receive(readline(new_socket, buffer, BUF))) == 0){
+                    if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0) {
+                        send_err(new_socket);
+                        break;
                     }
-                    if (ldapLogin(loggedInUser, pw) == 0){
-                        printf("login success\n");
-                        loggedIn = true;
-                        remove(user_ip_dir_path);
-                        send_ok(new_socket);
-                    }
-                    else {
-                        if ((file = fopen(user_ip_dir_path, "r")) != NULL) {
-                            checkip[0] = fgetc(file);
-                            fclose(file);
-                        }else checkip[0] = '0';
-                        if ((file = fopen(user_ip_dir_path, "w")) != NULL)
+                    sprintf(pw, "%s", buffer);
+                }
+                if (ldapLogin(loggedInUser, pw) == 0){
+                    printf("[%ld]: login success\n", tid);
+                    loggedIn = true;
+                    pthread_mutex_lock (&mutexIp);
+                    remove(user_ip_dir_path);
+                    pthread_mutex_unlock (&mutexIp);
+                    send_ok(new_socket);
+                }
+                else {
+                    pthread_mutex_lock (&mutexIp);
+                    if ((file = fopen(user_ip_dir_path, "r")) != NULL) {
+                        checkip[0] = fgetc(file);
+                        fclose(file);
+                    }else checkip[0] = '0';
+                    if ((file = fopen(user_ip_dir_path, "w")) != NULL){
                         switch (checkip[0]){
                             case '0': fprintf(file, "1:%ld\n", time(NULL)); break;
                             case '1': fprintf(file, "2:%ld\n", time(NULL)); break;
@@ -236,239 +279,233 @@ int main(int argc, char *argv[])
                             default: fprintf(file, "3:%ld\n", time(NULL)); break;
                         }
                         fclose(file);
-                        printf("login error\n");
-                        send_err(new_socket);
                     }
-                }
-                else if((strncmp("logout\n", to_lower(buffer), 7) == 0 || strncmp("logout\r", to_lower(buffer), 7) == 0) && loggedIn){
-                    loggedIn = false;
-                    memset(loggedInUser, 0, sizeof(loggedInUser));
-                    memset(pw, 0, sizeof(pw));
-                    send_ok(new_socket);
-                }
-                else if((strncmp("send\n", to_lower(buffer), 5) == 0 || strncmp("send\r", to_lower(buffer), 5) == 0) && loggedIn)
-                {
-                    struct Message message;
-                    int i = 2;
-                    send_ok(new_socket);
-
-                    while(i < 4)
-                    {
-                        if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
-                        {
-                            strncpy(message.sender, loggedInUser, 9);
-                            switch(i)
-                            {
-                                case RECIPIENT:
-                                    if(strlen(del_new_line(buffer)) > MAX_RECIPIENT_SIZE || strlen(del_new_line(buffer)) == 0) {
-                                        send_err(new_socket);
-                                        break;
-                                    }
-                                    //snprintf(filePath,filePathSize,"%s%s%c",path.c_str(),s.c_str(),'\0');
-                                    sprintf(message.recipient, "%s%c", buffer, '\0');
-                                    send_ok(new_socket);
-                                    i++;
-                                    break;
-                                case SUBJECT:
-                                    if(strlen(del_new_line(buffer)) > MAX_SUBJECT_SIZE || strlen(del_new_line(buffer)) == 0)
-                                    {
-                                        send_err(new_socket);
-                                        break;
-                                    }
-                                    strncpy(message.subject, buffer, 80);
-                                    i++;
-                                    send_ok(new_socket);
-                                    break;
-                                default:
-                                    exit(EXIT_FAILURE);
-                            }
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    if(size == 0)
-                    {
-                        user_dir_path = get_user_dir_path(mail_dir_path, message.recipient);
-
-                        if(mkdir(user_dir_path, 0777) && errno != EEXIST)
-                        {
-                            perror("error");
-                            exit(EXIT_FAILURE);
-                        }
-
-                        strcat(user_dir_path, "/");
-                        current_time = time(NULL);
-                        snprintf(buffer, BUF, "%ld_%s", current_time, message.sender);
-                        strncat(user_dir_path, buffer, strlen(buffer));
-
-                        if((file = fopen(user_dir_path, "w")) == NULL)
-                        {
-                            send_err(new_socket);
-                        }
-                        else
-                        {
-                            fprintf(file, "%s\n", message.sender);
-                            fprintf(file, "%s\n", message.recipient);
-                            fprintf(file, "%s\n", message.subject);
-                            do
-                            {
-                                if((size = check_receive(readline(new_socket, buffer, BUF))))
-                                {
-                                    break;
-                                }
-
-                                fprintf(file, "%s", buffer);
-                            }
-                            while(!((buffer[0] == '.' && (buffer[1] == '\n' || buffer[1] == '\r'))));
-                            fclose(file);
-                            if(size)
-                            {
-                                if(remove(user_dir_path) != 0)
-                                {
-                                    perror("del error");
-                                    exit(EXIT_FAILURE);
-                                }
-                            }
-                            else
-                            {
-                                send_ok(new_socket);
-                            }
-                        }
-                    }
-                }
-                else if((strncmp("list\n", to_lower(buffer), 5) == 0 ||
-                        strncmp("list\r", to_lower(buffer), 5) == 0) && loggedIn)
-                {
-                    send_ok(new_socket); // befehl bestätigen
-
-                    user_dir_path = get_user_dir_path(mail_dir_path, loggedInUser);
-
-                    if((dir = opendir(user_dir_path)) == NULL)
-                    {
-                        send_err(new_socket);
-                    } else {
-
-                        char *subjects = NULL;
-                        if((subjects = list_messages(dir, user_dir_path)) != NULL)
-                        {
-                            if(writen(new_socket, subjects, strlen(subjects)) < 0)
-                            {
-                                perror("send error");
-                                exit(EXIT_FAILURE);
-                            }
-                        }
-                        else
-                        {
-                            send_err(new_socket);
-                        }
-                    }
-                }
-                else if((strncmp("read\n", to_lower(buffer), 5) == 0 || (strncmp("read\r", to_lower(buffer), 5) == 0)) && loggedIn)
-                {
-                    send_ok(new_socket); // befehl bestätigen
-
-                    user_dir_path = get_user_dir_path(mail_dir_path, loggedInUser);
-
-                    if((dir = opendir(del_new_line(user_dir_path))) == NULL)
-                    {
-                        send_err(new_socket);
-                    } else {
-                        int message_number_is_valid = 0;
-                        int message_number = 1;
-
-                        if (get_mail_count(user_dir_path) == 0) {
-                            send_err(new_socket);
-                        } else {
-                            send_ok(new_socket); // bereit für nummer-eingabe
-
-                            do {
-                                if ((check_receive(readline(new_socket, buffer, BUF)))) {
-                                    // TODO: MAYDAY: kein break (wenn dann threads) -> break, send ok an closed socket?
-                                    break;
-                                }
-                                message_number = (int) strtol(buffer, NULL, 10);
-                                if ((message_number_is_valid =
-                                             message_number > get_mail_count(user_dir_path) || message_number <= 0)) {
-                                    send_err(new_socket);
-                                }
-                            } while (message_number_is_valid != 0);
-                            send_ok(new_socket); // nummer gültig
-
-                            char *message = NULL;
-                            if ((message = read_message(dir, user_dir_path, message_number)) != NULL) {
-                                if (writen(new_socket, message, strlen(message)) < 0) {
-                                    perror("send error");
-                                    exit(EXIT_FAILURE);
-                                }
-                            } else {
-                                send_err(new_socket);
-                            }
-                        }
-                    }
-                }
-                else if((strncmp("del\n", to_lower(buffer), 4) == 0 || strncmp("del\r", to_lower(buffer), 4) == 0) && loggedIn)
-                {
-                    send_ok(new_socket);
-                    user_dir_path = get_user_dir_path(mail_dir_path, loggedInUser);
-                    if((dir = opendir(del_new_line(user_dir_path))) == NULL)
-                    {
-                        send_err(new_socket);
-                    } else {
-
-                        int message_number_is_valid = 0;
-                        int message_number = 1;
-
-                        if (get_mail_count(user_dir_path) == 0) {
-                            send_err(new_socket);
-                        } else {
-                            send_ok(new_socket);
-
-                            do {
-                                if ((size = check_receive(readline(new_socket, buffer, BUF)))) {
-                                    break;
-                                }
-                                message_number = (int) strtol(buffer, NULL, 10);
-                                if ((message_number_is_valid =
-                                             message_number > get_mail_count(user_dir_path) ||
-                                             message_number <= 0)) {
-                                    send_err(new_socket);
-                                }
-                            } while (message_number_is_valid != 0);
-                            send_ok(new_socket);
-
-                            if (del_message(dir, user_dir_path, message_number) == 0) {
-                                send_ok(new_socket);
-                            } else {
-                                send_err(new_socket);
-                            }
-                        }
-                    }
+                    pthread_mutex_unlock (&mutexIp);
+                    printf("[%ld]: login error\n", tid);
+                    send_err(new_socket);
                 }
             }
+            else if((strncmp("logout\n", to_lower(buffer), 7) == 0 || strncmp("logout\r", to_lower(buffer), 7) == 0) && loggedIn){
+                loggedIn = false;
+                memset(loggedInUser, 0, sizeof(loggedInUser));
+                memset(pw, 0, sizeof(pw));
+                send_ok(new_socket);
+            }
+            else if((strncmp("send\n", to_lower(buffer), 5) == 0 || strncmp("send\r", to_lower(buffer), 5) == 0) && loggedIn)
+            {
+                struct Message message;
+                int i = 2;
+                send_ok(new_socket);
+
+                while(i < 4)
+                {
+                    if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
+                    {
+                        strncpy(message.sender, loggedInUser, 9);
+                        switch(i)
+                        {
+                            case RECIPIENT:
+                                if(strlen(del_new_line(buffer)) > MAX_RECIPIENT_SIZE || strlen(del_new_line(buffer)) == 0) {
+                                    send_err(new_socket);
+                                    break;
+                                }
+                                //snprintf(filePath,filePathSize,"%s%s%c",path.c_str(),s.c_str(),'\0');
+                                sprintf(message.recipient, "%s%c", buffer, '\0');
+                                send_ok(new_socket);
+                                i++;
+                                break;
+                            case SUBJECT:
+                                if(strlen(del_new_line(buffer)) > MAX_SUBJECT_SIZE || strlen(del_new_line(buffer)) == 0)
+                                {
+                                    send_err(new_socket);
+                                    break;
+                                }
+                                strncpy(message.subject, buffer, 80);
+                                i++;
+                                send_ok(new_socket);
+                                break;
+                            default:
+                                pthread_exit(NULL);
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                if(size == 0)
+                {
+                    user_dir_path = get_user_dir_path(mail_dir_path, message.recipient);
+                    pthread_mutex_lock (&mutexMail);
+                    if(mkdir(user_dir_path, 0777) && errno != EEXIST)
+                    {
+                        perror("error");
+                        pthread_exit(NULL);
+                    }
+                    pthread_mutex_unlock (&mutexMail);
+                    strcat(user_dir_path, "/");
+                    current_time = time(NULL);
+                    snprintf(buffer, BUF, "%ld_%s", current_time, message.sender);
+                    strncat(user_dir_path, buffer, strlen(buffer));
+
+                    pthread_mutex_lock (&mutexMail);
+                    if((file = fopen(user_dir_path, "w")) == NULL)
+                    {
+                        send_err(new_socket);
+                    }
+                    else
+                    {
+                        fprintf(file, "%s\n", message.sender);
+                        fprintf(file, "%s\n", message.recipient);
+                        fprintf(file, "%s\n", message.subject);
+                        do
+                        {
+                            if((size = check_receive(readline(new_socket, buffer, BUF))))
+                            {
+                                break;
+                            }
+
+                            fprintf(file, "%s", buffer);
+                        }
+                        while(!((buffer[0] == '.' && (buffer[1] == '\n' || buffer[1] == '\r'))));
+                        fclose(file);
+                        if(size)
+                        {
+                            if(remove(user_dir_path) != 0)
+                            {
+                                perror("del error");
+                                pthread_exit(NULL);
+                            }
+                        }
+                        else
+                        {
+                            send_ok(new_socket);
+                        }
+                    }pthread_mutex_unlock (&mutexMail);
+                }
+            }
+            else if((strncmp("list\n", to_lower(buffer), 5) == 0 ||
+                     strncmp("list\r", to_lower(buffer), 5) == 0) && loggedIn)
+            {
+                send_ok(new_socket); // befehl bestätigen
+
+                user_dir_path = get_user_dir_path(mail_dir_path, loggedInUser);
+                pthread_mutex_lock (&mutexMail);
+                if((dir = opendir(user_dir_path)) == NULL)
+                {
+                    send_err(new_socket);
+                } else {
+
+                    char *subjects = NULL;
+                    if((subjects = list_messages(dir, user_dir_path)) != NULL)
+                    {
+                        if(writen(new_socket, subjects, strlen(subjects)) < 0)
+                        {
+                            perror("send error");
+                            pthread_exit(NULL);
+                        }
+                    }
+                    else
+                    {
+                        send_err(new_socket);
+                    }
+                }pthread_mutex_unlock (&mutexMail);
+            }
+            else if((strncmp("read\n", to_lower(buffer), 5) == 0 || (strncmp("read\r", to_lower(buffer), 5) == 0)) && loggedIn)
+            {
+                send_ok(new_socket); // befehl bestätigen
+
+                user_dir_path = get_user_dir_path(mail_dir_path, loggedInUser);
+
+                pthread_mutex_lock (&mutexMail);
+                if((dir = opendir(del_new_line(user_dir_path))) == NULL)
+                {
+                    send_err(new_socket);
+                } else {
+                    int message_number_is_valid = 0;
+                    int message_number = 1;
+
+                    if (get_mail_count(user_dir_path) == 0) {
+                        send_err(new_socket);
+                    } else {
+                        send_ok(new_socket); // bereit für nummer-eingabe
+
+                        do {
+                            if ((check_receive(readline(new_socket, buffer, BUF)))) {
+                                break;
+                            }
+                            message_number = (int) strtol(buffer, NULL, 10);
+                            if ((message_number_is_valid =
+                                         message_number > get_mail_count(user_dir_path) || message_number <= 0)) {
+                                send_err(new_socket);
+                            }
+                        } while (message_number_is_valid != 0);
+                        send_ok(new_socket); // nummer gültig
+
+                        char *message = NULL;
+                        if ((message = read_message(dir, user_dir_path, message_number)) != NULL) {
+                            if (writen(new_socket, message, strlen(message)) < 0) {
+                                perror("send error");
+                                pthread_exit(NULL);
+                            }
+                        } else {
+                            send_err(new_socket);
+                        }
+                    }
+                }pthread_mutex_unlock (&mutexMail);
+            }
+            else if((strncmp("del\n", to_lower(buffer), 4) == 0 || strncmp("del\r", to_lower(buffer), 4) == 0) && loggedIn)
+            {
+                send_ok(new_socket);
+                user_dir_path = get_user_dir_path(mail_dir_path, loggedInUser);
+
+                pthread_mutex_lock (&mutexMail);
+                if((dir = opendir(del_new_line(user_dir_path))) == NULL)
+                {
+                    send_err(new_socket);
+                } else {
+
+                    int message_number_is_valid = 0;
+                    int message_number = 1;
+
+                    if (get_mail_count(user_dir_path) == 0) {
+                        send_err(new_socket);
+                    } else {
+                        send_ok(new_socket);
+
+                        do {
+                            if ((size = check_receive(readline(new_socket, buffer, BUF)))) {
+                                break;
+                            }
+                            message_number = (int) strtol(buffer, NULL, 10);
+                            if ((message_number_is_valid =
+                                         message_number > get_mail_count(user_dir_path) ||
+                                         message_number <= 0)) {
+                                send_err(new_socket);
+                            }
+                        } while (message_number_is_valid != 0);
+                        send_ok(new_socket);
+
+                        if (del_message(dir, user_dir_path, message_number) == 0) {
+                            send_ok(new_socket);
+                        } else {
+                            send_err(new_socket);
+                        }
+                    }
+                }pthread_mutex_unlock (&mutexMail);
+            }
         }
-        while((strncmp("quit\n", to_lower(buffer), 5) != 0 || strncmp("quit\r", to_lower(buffer), 5) != 0) && !size);
-        close(new_socket);
-        return EXIT_SUCCESS;
     }
+    while((strncmp("quit\n", to_lower(buffer), 5) != 0 || strncmp("quit\r", to_lower(buffer), 5) != 0) && !size);
+    close(new_socket);
+    pthread_exit(NULL);
 }
 
-void sigquit_handler()
+void sig_handler()
 {
     close(create_socket);
-    exit(EXIT_SUCCESS);
-}
-
-void sigint_handler()
-{
-    close(create_socket);
-    exit(EXIT_SUCCESS);
-}
-
-void sighup_handler()
-{
-    close(create_socket);
+    pthread_mutex_destroy(&mutexIp);
+    pthread_mutex_destroy(&mutexMail);
     exit(EXIT_SUCCESS);
 }
 

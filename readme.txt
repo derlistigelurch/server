@@ -1,3 +1,5 @@
+sudo apt install uuid-dev
+
 Usage:
 make all
 

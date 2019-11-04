@@ -1,5 +1,6 @@
 #include "myldap.h"
 
+
 int anonymous_user_search(char *username)
 {
     LDAP *ld; // LDAP resource handle
@@ -11,7 +12,7 @@ int anonymous_user_search(char *username)
     cred.bv_len = 0;
     int rc = 0;
     char filter[40] = "";
-    int resultCount = 0;
+    int result_count = 0;
 
     const char *attribs[] = {"uid", "cn", NULL}; // attribute array for search; muss nullterminiert sein
 
@@ -67,13 +68,13 @@ int anonymous_user_search(char *username)
         return EXIT_FAILURE;
     }
 
-    resultCount = ldap_count_entries(ld, result);
+    result_count = ldap_count_entries(ld, result);
 
     ldap_msgfree(result);
-    printf("LDAP search succeeded\n");
+    fprintf(stdout, "LDAP search succeeded\n");
 
     ldap_unbind_ext_s(ld, NULL, NULL);
-    if(resultCount == 1)
+    if(result_count == 1)
     {
         return EXIT_SUCCESS;
     }
@@ -123,9 +124,6 @@ int password_check(char *username, char *password)
     // user bind
     char binduser[60] = "";
     sprintf(binduser, "uid=%s,ou=People,dc=technikum-wien,dc=at", username);
-    //printf("binduser: %s\n", binduser);
-    //printf("size of pw: %ld\n", cred.bv_len);
-    //printf("cred: %s\n", cred);
     rc = ldap_sasl_bind_s(ld, binduser, LDAP_SASL_SIMPLE, &cred, NULL, NULL, &servercredp);
 
     if(rc != LDAP_SUCCESS)

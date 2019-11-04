@@ -3,6 +3,7 @@
 void print_usage()
 {
     fprintf(stderr, "Usage: client SERVERADDRESS PORT\n");
+    fflush(stderr);
     exit(EXIT_FAILURE);
 }
 
@@ -19,15 +20,19 @@ int send_error_check(int error_code)
         {
             case SENDER_ERROR:
                 fprintf(stderr, "ERROR! The SENDER must be between 1 and 8 characters long!\n");
+                fflush(stderr);
                 return EXIT_FAILURE;
             case RECIPIENT_ERROR:
                 fprintf(stderr, "ERROR! The RECIPIENT must be between 1 and 8 characters long!\n");
+                fflush(stderr);
                 return EXIT_FAILURE;
             case SUBJECT_ERROR:
                 fprintf(stderr, "ERROR! The SUBJECT be between 1 and 80 characters long!\n");
+                fflush(stderr);
                 return EXIT_FAILURE;
             default:
                 fprintf(stderr, "Something went terribly wrong!\n");
+                fflush(stderr);
                 exit(EXIT_FAILURE);
         }
     }
@@ -47,15 +52,19 @@ int read_del_error_check(int error_code)
         {
             case USERNAME_ERROR:
                 fprintf(stderr, "ERROR! USERNAME not found!\n");
+                fflush(stderr);
                 return EXIT_FAILURE;
             case MAIL_NOT_FOUND_ERROR:
                 fprintf(stderr, "ERROR! MAIL not found!\n");
+                fflush(stderr);
                 return EXIT_FAILURE;
             case MAIL_DIR_IS_EMPTY:
                 fprintf(stderr, "ERROR! MAIL not found!\n");
+                fflush(stderr);
                 return MAIL_DIR_IS_EMPTY;
             default:
                 fprintf(stderr, "Something went terribly wrong!\n");
+                fflush(stderr);
                 exit(EXIT_FAILURE);
         }
     }
@@ -112,6 +121,7 @@ int check_receive(int size)
     else
     {
         fprintf(stdout, "Lost connection to server\n");
+        fflush(stdout);
         exit(EXIT_FAILURE);
     }
 }

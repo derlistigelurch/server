@@ -14,7 +14,8 @@ int main(int argc, char *argv[])
     pthread_t tid;
     int new_socket = 0;
     char mail_dir_path[PATH_MAX];
-    strncpy(mail_dir_path, argv[2], strlen(argv[2]));
+    snprintf(mail_dir_path, strlen(argv[2]) + 1, "%s", argv[2]);
+    // strncpy(mail_dir_path, argv[2], strlen(argv[2]));
     int value = 1;
 
     // create mail spool directory
@@ -64,8 +65,8 @@ int main(int argc, char *argv[])
     address_length = sizeof(struct sockaddr_in);
 
     // pthread_mutex_init
-    pthread_mutex_init(&mutexMail, NULL);
-    pthread_mutex_init(&mutexIp, NULL);
+    pthread_mutex_init(&mutex_mail, NULL);
+    pthread_mutex_init(&mutex_ip, NULL);
     while(!0)
     {
         new_socket = accept(create_socket, (struct sockaddr *) &client_address, &address_length);
@@ -82,7 +83,7 @@ int main(int argc, char *argv[])
 
             if(pthread_create(&tid, NULL, server_function, &parameter) != 0)
             {
-                printf("Failed to create thread\n");
+                fprintf(stdout, "Failed to create thread\n");
             }
         }
     }

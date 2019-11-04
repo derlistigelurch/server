@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <uuid/uuid.h>
 
 #define BUF 1024
 #define MAX_RECIPIENT_SIZE 8
@@ -23,10 +24,11 @@
 #define SUBJECT 3
 #define CONTENT 4
 #define BAN_TIME 15
+#define UUID_SIZE 37
 
 int create_socket;
-pthread_mutex_t mutexMail;
-pthread_mutex_t mutexIp;
+pthread_mutex_t mutex_mail;
+pthread_mutex_t mutex_ip;
 
 struct Message
 {
@@ -73,5 +75,4 @@ struct thread_parameter
 };
 
 void *server_function(void *parameter);
-
 

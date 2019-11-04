@@ -30,11 +30,13 @@ int main(int argc, char *argv[])
     {
         system("clear");
         fprintf(stdout, "Connection with server (%s) established\n", inet_ntoa(address.sin_addr));
+        fflush(stdout);
         size = recv(create_socket, buffer, BUF - 1, 0);
         if(size > 0)
         {
             buffer[size] = '\0';
             fprintf(stdout, "%s", buffer);
+            fflush(stdout);
         }
     }
     else
@@ -48,10 +50,12 @@ int main(int argc, char *argv[])
         if(logged_in)
         {
             fprintf(stdout, "\n[send][list][read][del][logout][quit]\nCommand: ");
+            fflush(stdout);
         }
         else
         {
             fprintf(stdout, "\n[login][quit]\nCommand: ");
+            fflush(stdout);
 
         }
 
@@ -69,11 +73,13 @@ int main(int argc, char *argv[])
                 {
                     //system("clear");
                     fprintf(stdout, "\n You are blocked for the time being!\n");
+                    fflush(stdout);
                     continue;
                 }
             }
 
             fprintf(stdout, "Username: ");
+            fflush(stdout);
             fgets(buffer, BUF, stdin);
 
             if(writen(create_socket, buffer, strlen(buffer)) < 0)
@@ -84,6 +90,8 @@ int main(int argc, char *argv[])
 
             memset(buffer, 0, sizeof(buffer));
             fprintf(stdout, "Passwort: ");
+            fflush(stdout);
+
             tcgetattr(STDIN_FILENO, &term);
             term_orig = term;
             term.c_lflag &= ~ECHO;
@@ -107,11 +115,13 @@ int main(int argc, char *argv[])
                 {
                     logged_in = true;
                     system("clear");
-                    printf("\nLogin success! \n");
+                    fprintf(stdout, "\nLogin success! \n");
+                    fflush(stdout);
                 }
                 else
                 {
-                    printf("\nLogin failed! \n");
+                    fprintf(stderr, "\nLogin failed! \n");
+                    fflush(stderr);
                 }
             }
         }
@@ -131,10 +141,12 @@ int main(int argc, char *argv[])
                 else
                 {
                     fprintf(stdout, "Please try again!\n");
+                    fflush(stdout);
                 }
             }
         }
-        else if(strncmp(to_lower(buffer), "send\n", 5) == 0 && logged_in)                                          //SEND
+        else if(strncmp(to_lower(buffer), "send\n", 5) == 0 &&
+                logged_in)                                          //SEND
         {
             if(writen(create_socket, buffer, strlen(buffer)) < 0)
             {
@@ -148,6 +160,7 @@ int main(int argc, char *argv[])
                     do
                     {
                         fprintf(stdout, "Recipient: ");
+                        fflush(stdout);
                         fgets(buffer, BUF, stdin);
                         if(writen(create_socket, buffer, strlen(buffer)) < 0)
                         {
@@ -160,6 +173,7 @@ int main(int argc, char *argv[])
                     do
                     {
                         fprintf(stdout, "Subject: ");
+                        fflush(stdout);
                         fgets(buffer, BUF, stdin);
                         if(writen(create_socket, buffer, strlen(buffer)) < 0)
                         {
@@ -170,6 +184,7 @@ int main(int argc, char *argv[])
                     }
                     while(send_error_check(SUBJECT_ERROR) != 0);
                     fprintf(stdout, "Content:\n");
+                    fflush(stdout);
                     do
                     {
                         fgets(buffer, BUF, stdin);
@@ -186,10 +201,12 @@ int main(int argc, char *argv[])
                         {
                             system("clear");
                             fprintf(stdout, "\nMessage sent!\n\n");
+                            fflush(stdout);
                         }
                         else
                         {
                             fprintf(stderr, "ERROR! Unable to send message!\n");
+                            fflush(stderr);
                         }
                     }
                 }
@@ -209,10 +226,12 @@ int main(int argc, char *argv[])
                     if(strncmp(buffer, "ERR\n", 4) == 0)
                     {
                         fprintf(stderr, "Something went terribly wrong");
+                        fflush(stderr);
                     }
                     else
                     {
                         fprintf(stdout, "%s", buffer);
+                        fflush(stdout);
                     }
                 }
             }
@@ -231,6 +250,7 @@ int main(int argc, char *argv[])
                     do
                     {
                         fprintf(stdout, "Number: ");
+                        fflush(stdout);
                         fgets(buffer, BUF, stdin);
                         if(writen(create_socket, buffer, strlen(buffer)) < 0)
                         {
@@ -244,15 +264,18 @@ int main(int argc, char *argv[])
                     {
                         buffer[strlen(buffer) - 2] = '\0';
                         fprintf(stdout, "%s", buffer);
+                        fflush(stdout);
                     }
                     else
                     {
                         fprintf(stderr, "ERROR! Unable to read message!\n");
+                        fflush(stderr);
                     }
                 }
                 else
                 {
                     fprintf(stderr, "ERROR! Mail directory is EMPTY!\n");
+                    fflush(stderr);
                 }
             }
         }
@@ -271,6 +294,7 @@ int main(int argc, char *argv[])
                     do
                     {
                         fprintf(stdout, "Number: ");
+                        fflush(stdout);
                         fgets(buffer, BUF, stdin);
                         if(writen(create_socket, buffer, strlen(buffer)) < 0)
                         {
@@ -284,15 +308,18 @@ int main(int argc, char *argv[])
                     {
                         system("clear");
                         fprintf(stdout, " \nMessage deleted!\n\n");
+                        fflush(stdout);
                     }
                     else
                     {
                         fprintf(stderr, "ERROR! Unable to delete message!\n");
+                        fflush(stderr);
                     }
                 }
                 else
                 {
                     fprintf(stderr, "ERROR! Mail directory is EMPTY!\n");
+                    fflush(stderr);
                 }
             }
         }

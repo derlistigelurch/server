@@ -4,8 +4,8 @@
 void sig_handler()
 {
     close(create_socket);
-    pthread_mutex_destroy(&mutexIp);
-    pthread_mutex_destroy(&mutexMail);
+    pthread_mutex_destroy(&mutex_ip);
+    pthread_mutex_destroy(&mutex_mail);
     exit(EXIT_SUCCESS);
 }
 
@@ -370,7 +370,6 @@ void *server_function(void *parameter)
     char *user_dir_path = NULL;
     char *user_ip_dir_path = NULL;
     char check_ip[30] = "";
-    time_t current_time;
     FILE *file = NULL;
     DIR *dir = NULL;
 
@@ -398,7 +397,7 @@ void *server_function(void *parameter)
             fprintf(stdout, "[%ld]: Received command: %s", tid, buffer);
             if(strncmp("login\n", to_lower(buffer), 6) == 0 || strncmp("login\r", to_lower(buffer), 6) == 0)
             {
-                pthread_mutex_lock(&mutexIp);
+                pthread_mutex_lock(&mutex_ip);
                 if(access(user_ip_dir_path, F_OK) != -1)
                 {
                     // es gibt schon ein file; dann nachschauen ob schon 3ter versuch
@@ -424,7 +423,7 @@ void *server_function(void *parameter)
                             else
                             {
                                 send_err(new_socket);
-                                pthread_mutex_unlock(&mutexIp);
+                                pthread_mutex_unlock(&mutex_ip);
                                 continue;
                             }
                         }
@@ -436,7 +435,7 @@ void *server_function(void *parameter)
                 {
                     send_ok(new_socket);
                 }
-                pthread_mutex_unlock(&mutexIp);
+                pthread_mutex_unlock(&mutex_ip);
                 if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
                 {
                     if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0)
@@ -460,14 +459,14 @@ void *server_function(void *parameter)
                 {
                     printf("[%ld]: login success\n", tid);
                     logged_in = true;
-                    pthread_mutex_lock(&mutexIp);
+                    pthread_mutex_lock(&mutex_ip);
                     remove(user_ip_dir_path);
-                    pthread_mutex_unlock(&mutexIp);
+                    pthread_mutex_unlock(&mutex_ip);
                     send_ok(new_socket);
                 }
                 else
                 {
-                    pthread_mutex_lock(&mutexIp);
+                    pthread_mutex_lock(&mutex_ip);
                     if((file = fopen(user_ip_dir_path, "r")) != NULL)
                     {
                         check_ip[0] = (char) fgetc(file);
@@ -497,7 +496,7 @@ void *server_function(void *parameter)
                         }
                         fclose(file);
                     }
-                    pthread_mutex_unlock(&mutexIp);
+                    pthread_mutex_unlock(&mutex_ip);
                     printf("[%ld]: login error\n", tid);
                     send_err(new_socket);
                 }
@@ -558,19 +557,27 @@ void *server_function(void *parameter)
                 if(size == 0)
                 {
                     user_dir_path = get_user_dir_path(mail_dir_path, message.recipient);
-                    pthread_mutex_lock(&mutexMail);
+                    pthread_mutex_lock(&mutex_mail);
                     if(mkdir(user_dir_path, 0777) && errno != EEXIST)
                     {
                         perror("error");
                         pthread_exit(NULL);
                     }
-                    pthread_mutex_unlock(&mutexMail);
+
+                    uuid_t bin_uuid;
+                    uuid_generate_random(bin_uuid); // unparse bin_uid to get a usable 36-character string
+                    char *uuid = (char *) malloc(sizeof(char) * UUID_SIZE); // allocate memory
+                    uuid_unparse_lower(bin_uuid, uuid); // produces a uuid with lower-case letters
+
+                    pthread_mutex_unlock(&mutex_mail);
                     strcat(user_dir_path, "/");
-                    current_time = time(NULL);
-                    snprintf(buffer, BUF, "%ld_%s", current_time, message.sender);
+                    snprintf(buffer, BUF, "%s", uuid);
+
                     strncat(user_dir_path, buffer, strlen(buffer));
 
-                    pthread_mutex_lock(&mutexMail);
+                    free(uuid); // free allocated memory
+
+                    pthread_mutex_lock(&mutex_mail);
                     if((file = fopen(user_dir_path, "w")) == NULL)
                     {
                         send_err(new_socket);
@@ -604,7 +611,7 @@ void *server_function(void *parameter)
                             send_ok(new_socket);
                         }
                     }
-                    pthread_mutex_unlock(&mutexMail);
+                    pthread_mutex_unlock(&mutex_mail);
                 }
             }
             else if((strncmp("list\n", to_lower(buffer), 5) == 0 ||
@@ -613,7 +620,7 @@ void *server_function(void *parameter)
                 send_ok(new_socket); // befehl bestätigen
 
                 user_dir_path = get_user_dir_path(mail_dir_path, logged_in_user);
-                pthread_mutex_lock(&mutexMail);
+                pthread_mutex_lock(&mutex_mail);
                 if((dir = opendir(user_dir_path)) == NULL)
                 {
                     send_err(new_socket);
@@ -635,7 +642,7 @@ void *server_function(void *parameter)
                         send_err(new_socket);
                     }
                 }
-                pthread_mutex_unlock(&mutexMail);
+                pthread_mutex_unlock(&mutex_mail);
             }
             else if((strncmp("read\n", to_lower(buffer), 5) == 0 || (strncmp("read\r", to_lower(buffer), 5) == 0)) &&
                     logged_in)
@@ -644,7 +651,7 @@ void *server_function(void *parameter)
 
                 user_dir_path = get_user_dir_path(mail_dir_path, logged_in_user);
 
-                pthread_mutex_lock(&mutexMail);
+                pthread_mutex_lock(&mutex_mail);
                 if((dir = opendir(del_new_line(user_dir_path))) == NULL)
                 {
                     send_err(new_socket);
@@ -692,7 +699,7 @@ void *server_function(void *parameter)
                         }
                     }
                 }
-                pthread_mutex_unlock(&mutexMail);
+                pthread_mutex_unlock(&mutex_mail);
             }
             else if((strncmp("del\n", to_lower(buffer), 4) == 0 || strncmp("del\r", to_lower(buffer), 4) == 0) &&
                     logged_in)
@@ -700,7 +707,7 @@ void *server_function(void *parameter)
                 send_ok(new_socket);
                 user_dir_path = get_user_dir_path(mail_dir_path, logged_in_user);
 
-                pthread_mutex_lock(&mutexMail);
+                pthread_mutex_lock(&mutex_mail);
                 if((dir = opendir(del_new_line(user_dir_path))) == NULL)
                 {
                     send_err(new_socket);
@@ -746,7 +753,7 @@ void *server_function(void *parameter)
                         }
                     }
                 }
-                pthread_mutex_unlock(&mutexMail);
+                pthread_mutex_unlock(&mutex_mail);
             }
         }
     }

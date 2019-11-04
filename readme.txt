@@ -1,12 +1,14 @@
-sudo apt install uuid-dev
+Um das Programm zu starten werden folgende Packete benötigt:
+- libldap2-dev
+- uuid-dev
 
 Usage:
 make all
 
-server starten: 
-server Portnr dir
+Server starten
+server portnr dir
 (zB. ./server 5678 saved_mails)
 
-client starten:
+Client starten
 client serveraddress portnr
-(zB. ./client localhost 5678)
+(zB. ./client 127.0.0.1 5678)

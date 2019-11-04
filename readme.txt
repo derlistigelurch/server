@@ -1,4 +1,4 @@
-Um das Programm zu starten werden folgende Packete benötigt:
+Um das Programm zu starten werden folgende Pakete benötigt:
 - libldap2-dev
 - uuid-dev
 

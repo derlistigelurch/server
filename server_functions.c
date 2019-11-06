@@ -415,7 +415,7 @@ void *server_function(void *parameter)
                             fgets(check_ip, 30, file);
                             check_time = (int) strtol(check_ip, NULL, 10);
                             check_time -= time(NULL);
-                            if(check_time < BAN_TIME)
+                            if(check_time < -BAN_TIME)
                             {
                                 //wenn genügend zeit vergangen, wieder login zulassen
                                 remove(user_ip_dir_path);
@@ -436,13 +436,16 @@ void *server_function(void *parameter)
                     send_ok(new_socket);
                 }
                 pthread_mutex_unlock(&mutex_ip);
+				//username
                 if((size = check_receive(readline(new_socket, buffer, BUF))) == 0)
                 {
                     if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0)
                     {
                         send_err(new_socket);
-                        break;
-                    }
+                        continue;
+                    }else{
+						send_ok(new_socket);
+					}
                     sprintf(logged_in_user, "%s", buffer);
                     memset(buffer, 0, sizeof(buffer));
                 }
@@ -451,7 +454,7 @@ void *server_function(void *parameter)
                     if(strlen(del_new_line(buffer)) > 30 || strlen(del_new_line(buffer)) == 0)
                     {
                         send_err(new_socket);
-                        break;
+                        continue;
                     }
                     sprintf(password, "%s", buffer);
                 }
@@ -759,5 +762,6 @@ void *server_function(void *parameter)
     }
     while((strncmp("quit\n", to_lower(buffer), 5) != 0 || strncmp("quit\r", to_lower(buffer), 5) != 0) && !size);
     close(new_socket);
+	fprintf(stdout, "[%ld] socked closed\n", tid);
     pthread_exit(NULL);
 }

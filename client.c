@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
                 if(strncmp(buffer, "ERR\n", 4) == 0)
                 {
                     //system("clear");
-                    fprintf(stdout, "\n You are blocked for the time being!\n");
+                    fprintf(stdout, "\nYou are blocked for the time being!\n");
                     fflush(stdout);
                     continue;
                 }
@@ -87,8 +87,18 @@ int main(int argc, char *argv[])
                 perror("send error");
                 exit(EXIT_FAILURE);
             }
+			memset(buffer, 0, sizeof(buffer));
+			if(check_receive(recv(create_socket, buffer, BUF, 0)) == 0)
+            {
+                if(strncmp(buffer, "ERR\n", 4) == 0)
+                {
+					fprintf(stdout, "User has to have at least one character!\n");
+                    continue;
+                }
+            }
 
             memset(buffer, 0, sizeof(buffer));
+			
             fprintf(stdout, "Passwort: ");
             fflush(stdout);
 
